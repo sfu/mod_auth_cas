@@ -1,0 +1,23 @@
+K 25
+svn:wc:ra_dav:version-url
+V 72
+/acs/dev/!svn/ver/10150/Apache%20CAS%20Module/mod_auth_cas_sfu-1.0.8/src
+END
+Makefile.in
+K 25
+svn:wc:ra_dav:version-url
+V 84
+/acs/dev/!svn/ver/10462/Apache%20CAS%20Module/mod_auth_cas_sfu-1.0.8/src/Makefile.in
+END
+mod_auth_cas.c
+K 25
+svn:wc:ra_dav:version-url
+V 87
+/acs/dev/!svn/ver/10480/Apache%20CAS%20Module/mod_auth_cas_sfu-1.0.8/src/mod_auth_cas.c
+END
+mod_auth_cas.h
+K 25
+svn:wc:ra_dav:version-url
+V 87
+/acs/dev/!svn/ver/10480/Apache%20CAS%20Module/mod_auth_cas_sfu-1.0.8/src/mod_auth_cas.h
+END
