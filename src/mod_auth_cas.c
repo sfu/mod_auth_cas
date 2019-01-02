@@ -1506,6 +1506,7 @@ static void deleteCASCacheFile(request_rec *r, char *cookieName)
 }
 
 /* functions related to validation of tickets/cache entries */
+// It checks the service ticket.
 static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, char **user, char **authtype, char **maillist, char **password)
 {
 	char *line;
@@ -1604,6 +1605,39 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 					continue;
 				}
 			}
+			
+			// Check username and password against that in .htpasswd
+			// TODO: Check that authtype is not null
+			// if (!strcasecmp(authtype,"apache")) {
+			if ((authtype != NULL) && !strcasecmp(authtype,"apache")) {
+				ap_configfile_t *f;
+				char l[CAS_MAX_RESPONSE_SIZE+1];
+			
+				// TODO: Check that username and password are not null. Return false if null.
+				if(c->CASDebug)
+					ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Trying to open htpasswd file '%s'", d->pwfile==NULL?"(NULL)":d->pwfile);
+				if (APR_SUCCESS == ap_pcfg_openfile(&f, r->pool, d->pwfile)) {
+					if (c->CASDebug)
+						ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Successfully opened '%s'", d->pwfile);
+			
+					while (!(ap_cfg_getline(l, CAS_MAX_RESPONSE_SIZE, f))) {
+						if ((l[0] == '#') || (l[0] == 0)) continue; // ignore comment or blank lines
+						if (l[0] == '+') continue; // an SFU line
+						if (!strncmp(l, user, strlen(user)) && l[strlen(user)]==':') {
+							if (APR_SUCCESS == apr_password_validate(d->password, l+strlen(user)+1)) {
+								if (c->CASDebug)
+									ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Successfully validated password for '%s'", user);
+								return TRUE;
+							}
+						}
+					}
+				} else {
+					if (c->CASDebug)
+						ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Unable to opened '%s'", d->pwfile);
+				}
+				return FALSE;
+			}
+			
 			if (gotUser) return TRUE;
 		} else if (apr_strnatcmp(node->name, "authenticationFailure") == 0) {
 			attr = node->attr;
@@ -2492,6 +2526,7 @@ static int cas_post_config(apr_pool_t *pool, apr_pool_t *p1, apr_pool_t *p2, ser
 	return OK;
 }
 
+// Checking authorization
 static int cas_user_access(request_rec *r)
 {
 	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
@@ -2521,37 +2556,39 @@ static int cas_user_access(request_rec *r)
 		 *	We will set req_count to 0 so that the require line check is skipped if
 		 *  the password check fails.
 		 */
-		if (!strcasecmp(authtype,"apache")) {
-			ap_configfile_t *f;
-			char l[CAS_MAX_RESPONSE_SIZE+1];
-			
-			/* We will set the request count to 0 assuming the password check fails. It will be reset if it passes. */
-			req_count = 0;
-			if (d->password==NULL) d->password="";
-			
-			if(c->CASDebug)
-				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Trying to open htpasswd file '%s'", d->pwfile==NULL?"(NULL)":d->pwfile);
-			if (APR_SUCCESS == ap_pcfg_openfile(&f, r->pool, d->pwfile)) {
-				if (c->CASDebug)
-					ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Successfully opened '%s'", d->pwfile);
-			
-				while (!(ap_cfg_getline(l, CAS_MAX_RESPONSE_SIZE, f))) {
-					if ((l[0] == '#') || (l[0] == 0)) continue; // ignore comment or blank lines
-					if (l[0] == '+') continue; // an SFU line
-					if (!strncmp(l, user, strlen(user)) && l[strlen(user)]==':') {
-						if (APR_SUCCESS == apr_password_validate(d->password, l+strlen(user)+1)) {
-							if (c->CASDebug)
-								ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Successfully validated password for '%s'", user);
-							req_count=reqs_arr->nelts; 
-							break;
-						}
-					}
-				}
-			} else {
-				if (c->CASDebug)
-					ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Unable to opened '%s'", d->pwfile);
-			}
-		}
+		 // Commented because Ray think this block should be called earlier, i.e., in isValidCASTicket routine
+		 
+// 		if (!strcasecmp(authtype,"apache")) {
+// 			ap_configfile_t *f;
+// 			char l[CAS_MAX_RESPONSE_SIZE+1];
+// 			
+// 			/* We will set the request count to 0 assuming the password check fails. It will be reset if it passes. */
+// 			req_count = 0;
+// 			if (d->password==NULL) d->password="";
+// 			
+// 			if(c->CASDebug)
+// 				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Trying to open htpasswd file '%s'", d->pwfile==NULL?"(NULL)":d->pwfile);
+// 			if (APR_SUCCESS == ap_pcfg_openfile(&f, r->pool, d->pwfile)) {
+// 				if (c->CASDebug)
+// 					ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Successfully opened '%s'", d->pwfile);
+// 			
+// 				while (!(ap_cfg_getline(l, CAS_MAX_RESPONSE_SIZE, f))) {
+// 					if ((l[0] == '#') || (l[0] == 0)) continue; // ignore comment or blank lines
+// 					if (l[0] == '+') continue; // an SFU line
+// 					if (!strncmp(l, user, strlen(user)) && l[strlen(user)]==':') {
+// 						if (APR_SUCCESS == apr_password_validate(d->password, l+strlen(user)+1)) {
+// 							if (c->CASDebug)
+// 								ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Successfully validated password for '%s'", user);
+// 							req_count=reqs_arr->nelts; 
+// 							break;
+// 						}
+// 					}
+// 				}
+// 			} else {
+// 				if (c->CASDebug)
+// 					ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Unable to opened '%s'", d->pwfile);
+// 			}
+// 		}
 		
 		for (x = 0; x < req_count; x++) {
 			
@@ -2754,14 +2791,84 @@ static apr_status_t cas_in_filter(ap_filter_t *f, apr_bucket_brigade *bb, ap_inp
 }
 #endif
 
+/*
+ * It tells Apache that these are capable of doing authentication / authorization 
+ */
 static void cas_register_hooks(apr_pool_t *p)
 {
 	ap_hook_post_config(cas_post_config, NULL, NULL, APR_HOOK_MIDDLE);
-	ap_hook_check_user_id(cas_authenticate, NULL, NULL, APR_HOOK_MIDDLE);
-    ap_hook_auth_checker(cas_user_access, NULL, NULL, APR_HOOK_MIDDLE);
+	
+  // Copied code from mod_auth_cas 2.4 
+  // ap_hook_auth_checker(cas_user_access, NULL, NULL, APR_HOOK_MIDDLE);
+#if MODULE_MAGIC_NUMBER_MAJOR >= 20120211
+	/*
+	ap_register_auth_provider(p, AUTHZ_PROVIDER_GROUP, "cas-attribute",
+		AUTHZ_PROVIDER_VERSION,
+		&authz_cas_provider, AP_AUTH_INTERNAL_PER_CONF);
+	 */
+	ap_register_auth_provider(p, AUTHZ_PROVIDER_GROUP, "valid-sfu-user",
+		AUTHZ_PROVIDER_VERSION,
+		&authz_valid_sfu_user_provider, AP_AUTH_INTERNAL_PER_CONF);
+	ap_register_auth_provider(p, AUTHZ_PROVIDER_GROUP, "valid-sfu-staff",
+		AUTHZ_PROVIDER_VERSION,
+		&authz_valid_sfu_staff_provider, AP_AUTH_INTERNAL_PER_CONF);
+	ap_register_auth_provider(p, AUTHZ_PROVIDER_GROUP, "valid-sfu-student",
+		AUTHZ_PROVIDER_VERSION,
+		&authz_valid_sfu_student_provider, AP_AUTH_INTERNAL_PER_CONF);
+	ap_register_auth_provider(p, AUTHZ_PROVIDER_GROUP, "valid-sfu-sponsored",
+		AUTHZ_PROVIDER_VERSION,
+		&authz_valid_sfu_sponsored_provider, AP_AUTH_INTERNAL_PER_CONF);
+	ap_register_auth_provider(p, AUTHZ_PROVIDER_GROUP, "valid-sfu-external",
+		AUTHZ_PROVIDER_VERSION,
+		&authz_valid_sfu_external_provider, AP_AUTH_INTERNAL_PER_CONF);
+	ap_register_auth_provider(p, AUTHZ_PROVIDER_GROUP, "sfu-user",
+		AUTHZ_PROVIDER_VERSION,
+		&authz_sfu_user_provider, AP_AUTH_INTERNAL_PER_CONF);
+	ap_register_auth_provider(p, AUTHZ_PROVIDER_GROUP, "valid-alumni-user",
+		AUTHZ_PROVIDER_VERSION,
+		&authz_valid_alumni_user_provider, AP_AUTH_INTERNAL_PER_CONF);
+	ap_register_auth_provider(p, AUTHZ_PROVIDER_GROUP, "alumni-user",
+		AUTHZ_PROVIDER_VERSION,
+		&authz_alumni_user_provider, AP_AUTH_INTERNAL_PER_CONF);
+	ap_register_auth_provider(p, AUTHZ_PROVIDER_GROUP, "user",
+		AUTHZ_PROVIDER_VERSION,
+		&authz_user_provider, AP_AUTH_INTERNAL_PER_CONF);
+	ap_register_auth_provider(p, AUTHZ_PROVIDER_GROUP, "valid-user",
+		AUTHZ_PROVIDER_VERSION,
+		&authz_valid_user_provider, AP_AUTH_INTERNAL_PER_CONF);
+#else
+	/* make sure we run before mod_authz_user so that a "require valid-user"
+	 *  directive doesn't just automatically pass us. */
+	static const char *const authzSucc[] = { "mod_authz_user.c", NULL };
+	// ap_hook_auth_checker(cas_authorize, NULL, authzSucc, APR_HOOK_MIDDLE);
+	ap_hook_auth_checker(cas_user_access, NULL, authzSucc, APR_HOOK_MIDDLE);
+#endif
+
 #ifdef BROKEN
 	ap_register_input_filter("CAS", cas_in_filter, NULL, AP_FTYPE_RESOURCE); 
 #endif
+
+  // Copied code from mod_auth_cas 2.4 
+	// ap_hook_check_user_id(cas_authenticate, NULL, NULL, APR_HOOK_MIDDLE);
+	// Authentication with CAS 
+#if MODULE_MAGIC_NUMBER_MAJOR >= 20120211
+	ap_hook_check_authn(
+		cas_authenticate,
+		NULL,
+		NULL,
+		APR_HOOK_MIDDLE,
+		AP_AUTH_INTERNAL_PER_URI);
+#elif MODULE_MAGIC_NUMBER_MAJOR >= 20100714
+	ap_hook_check_access_ex(
+		cas_authenticate,
+		NULL,
+		NULL,
+		APR_HOOK_MIDDLE,
+		AP_AUTH_INTERNAL_PER_URI);
+#else
+	ap_hook_check_user_id(cas_authenticate, NULL, NULL, APR_HOOK_MIDDLE);
+#endif
+	
 }
 
 static const command_rec cas_cmds [] = {
