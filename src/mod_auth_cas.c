@@ -173,7 +173,6 @@ static void *cas_create_dir_config(apr_pool_t *pool, char *path)
 	c->authtype = CAS_DEFAULT_AUTHTYPE;
 	c->maillist = CAS_DEFAULT_MAILLIST;
 	c->password = CAS_DEFAULT_PASSWORD;
-	c->ckid = CAS_DEFAULT_CKID;
 	c->pwfile = CAS_DEFAULT_PWFILE;
 	c->gpfile = CAS_DEFAULT_GPFILE;
 	c->authoritative = CAS_DEFAULT_AUTHORITATIVE;
@@ -181,7 +180,6 @@ static void *cas_create_dir_config(apr_pool_t *pool, char *path)
 	c->useauthtype = CAS_DEFAULT_USEAUTHTYPE;
 	c->CASAuthTypeHeader = CAS_DEFAULT_AUTHTYPE_HEADER;
 	c->CASAuthMaillistHeader = CAS_DEFAULT_MAILLIST_HEADER;
-	c->CASAuthCKIDHeader = CAS_DEFAULT_CKID_HEADER;
 	return(c);
 }
 
@@ -213,7 +211,6 @@ static void *cas_merge_dir_config(apr_pool_t *pool, void *BASE, void *ADD)
 	c->authtype = add->authtype;
 	c->maillist = add->maillist;
 	c->password = add->password;
-	c->ckid = add->ckid;
 	c->pwfile = (add->pwfile != CAS_DEFAULT_PWFILE ? add->pwfile : base->pwfile);
 	c->gpfile = (add->gpfile != CAS_DEFAULT_GPFILE ? add->gpfile : base->gpfile);
 	c->authoritative = (add->authoritative != CAS_DEFAULT_AUTHORITATIVE ? add->authoritative : base->authoritative);
@@ -221,7 +218,6 @@ static void *cas_merge_dir_config(apr_pool_t *pool, void *BASE, void *ADD)
 	c->useauthtype = (add->useauthtype != CAS_DEFAULT_USEAUTHTYPE ? add->useauthtype : base->useauthtype);
 	c->CASAuthTypeHeader = (add->CASAuthTypeHeader != CAS_DEFAULT_AUTHTYPE_HEADER ? add->CASAuthTypeHeader : base->CASAuthTypeHeader);
 	c->CASAuthMaillistHeader = (add->CASAuthMaillistHeader != CAS_DEFAULT_MAILLIST_HEADER ? add->CASAuthMaillistHeader : base->CASAuthMaillistHeader);
-	c->CASAuthCKIDHeader = (add->CASAuthCKIDHeader != CAS_DEFAULT_CKID_HEADER ? add->CASAuthCKIDHeader : base->CASAuthCKIDHeader);
 	return(c);
 }
 
@@ -1095,7 +1091,6 @@ static apr_byte_t readCASCacheFile(request_rec *r, cas_cfg *c, char *name, cas_c
 	cache->ticket = NULL;
 	cache->authtype = NULL;
 	cache->maillist = NULL;
-	cache->ckid = NULL;
 	cache->password = NULL;
 
 	do {
@@ -1128,8 +1123,6 @@ static apr_byte_t readCASCacheFile(request_rec *r, cas_cfg *c, char *name, cas_c
 			cache->authtype = apr_pstrndup(r->pool, val, strlen(val));
 		else if (apr_strnatcasecmp(e->name, "maillist") == 0)
 			cache->maillist = apr_pstrndup(r->pool, val, strlen(val));
-		else if (apr_strnatcasecmp(e->name, "ckid") == 0)
-			cache->ckid = apr_pstrndup(r->pool, val, strlen(val));
 		else if (apr_strnatcasecmp(e->name, "password") == 0) {
 			char * decoded_line = apr_palloc(r->pool, apr_base64_decode_len(val) + 1);
 			int length = apr_base64_decode(decoded_line, val);
@@ -1289,7 +1282,6 @@ static apr_byte_t writeCASCacheEntry(request_rec *r, char *name, cas_cache_entry
 	apr_file_printf(f, "<ticket>%s</ticket>\n", apr_xml_quote_string(r->pool, cache->ticket, TRUE));
 	if (cache->authtype!=NULL) apr_file_printf(f, "<authtype>%s</authtype>\n", apr_xml_quote_string(r->pool, cache->authtype, TRUE));
 	if (cache->maillist!=NULL) apr_file_printf(f, "<maillist>%s</maillist>\n", apr_xml_quote_string(r->pool, cache->maillist, TRUE));
-	if (cache->ckid!=NULL) apr_file_printf(f, "<ckid>%s</ckid>\n", apr_xml_quote_string(r->pool, cache->ckid, TRUE));
 	if (cache->password!=NULL && cache->authtype!=NULL && !strcasecmp(cache->authtype,"apache")) {
 		char * encoded_line = apr_palloc(r->pool, apr_base64_encode_len(strlen(cache->password)));
 		int length = apr_base64_encode(encoded_line, cache->password, strlen(cache->password));
@@ -1336,7 +1328,7 @@ static char *createBasicCASCacheName(request_rec *r) {
 	
 }
 
-static char *createCASCookie(request_rec *r, char *user, char *ticket, char *authtype, char *maillist, char *ckid)
+static char *createCASCookie(request_rec *r, char *user, char *ticket, char *authtype, char *maillist)
 {
 	char *path, *buf, *rv;
 	apr_file_t *f;
@@ -1348,7 +1340,7 @@ static char *createCASCookie(request_rec *r, char *user, char *ticket, char *aut
 	buf = apr_pcalloc(r->pool, c->CASCookieEntropy);
 
 	if(c->CASDebug)
-		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "entering createCASCookie(,%s,%s,%s,%s,%s,%s)",user,ticket,authtype,maillist,ckid,d->password);
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "entering createCASCookie(,%s,%s,%s,%s,%s,%s)",user,ticket,authtype,maillist,d->password);
 
 	CASCleanCache(r, c);
 
@@ -1361,7 +1353,6 @@ static char *createCASCookie(request_rec *r, char *user, char *ticket, char *aut
 	e.ticket = ticket;
 	e.authtype = authtype;
 	e.maillist = maillist;
-	e.ckid = ckid;
 	e.password = d->password;
 	
 	if (r->ap_auth_type!=NULL && 0==apr_strnatcasecmp((const char *) r->ap_auth_type, "basic")) {
@@ -1515,7 +1506,7 @@ static void deleteCASCacheFile(request_rec *r, char *cookieName)
 }
 
 /* functions related to validation of tickets/cache entries */
-static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, char **user, char **authtype, char **maillist, char **password, char **ckid)
+static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, char **user, char **authtype, char **maillist, char **password)
 {
 	char *line;
 	apr_xml_doc *doc;
@@ -1586,7 +1577,6 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 		 *		->authtype (SFU only)
 		 *		->maillist (SFU only)
 		 *		->password (SFU only)
-		 *		->ckid     (SFU only)
 		 *      ->proxyGrantingTicket
 		 *  ->authenticationFailure (code)
 		 */
@@ -1612,9 +1602,6 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 						*password = apr_pstrcat(r->pool, *password, t->text, NULL);
 					}
 					continue;
-				} else if (apr_strnatcmp(node->name, "ckid") == 0) {
-					*ckid = apr_pstrndup(r->pool, line, strlen(line));
-					continue;
 				}
 			}
 			if (gotUser) return TRUE;
@@ -1631,7 +1618,7 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 	return FALSE;
 }
 
-static apr_byte_t isValidCASCookie(request_rec *r, cas_cfg *c, char *cookie, char **user, char **authtype, char **maillist, char **ckid, char **password)
+static apr_byte_t isValidCASCookie(request_rec *r, cas_cfg *c, char *cookie, char **user, char **authtype, char **maillist, char **password)
 {
 	char *path;
 	cas_cache_entry cache;
@@ -1693,8 +1680,6 @@ static apr_byte_t isValidCASCookie(request_rec *r, cas_cfg *c, char *cookie, cha
 		*authtype = apr_pstrndup(r->pool, cache.authtype, strlen(cache.authtype));
 	if (cache.maillist!=NULL)
 		*maillist = apr_pstrndup(r->pool, cache.maillist, strlen(cache.maillist));
-	if (cache.ckid!=NULL)
-		*ckid = apr_pstrndup(r->pool, cache.ckid, strlen(cache.ckid));
 	if (cache.password!=NULL)
 		*password = apr_pstrndup(r->pool, cache.password, strlen(cache.password));
 
@@ -2184,7 +2169,6 @@ static int cas_authenticate(request_rec *r)
 	char *remoteUser = NULL;
 	char *SFUauthtype = NULL;
 	char *SFUmaillist = NULL;
-	char *SFUckid = NULL;
 	char *sent_user, *sent_pw;
 	cas_cfg *c;
 	cas_dir_cfg *d;
@@ -2293,7 +2277,7 @@ RETRYBASIC:
 			/*
 			 * Check to see if we have a cache entry for this user
 			 */
-			if(isValidCASCookie(r, c, createBasicCASCacheName(r), &remoteUser, &SFUauthtype, &SFUmaillist, &SFUckid, &d->password)) {
+			if(isValidCASCookie(r, c, createBasicCASCacheName(r), &remoteUser, &SFUauthtype, &SFUmaillist, &d->password)) {
 				d->authtype = SFUauthtype;
 				d->maillist = SFUmaillist;
 				r->user = remoteUser;
@@ -2310,8 +2294,6 @@ RETRYBASIC:
 						apr_table_addn(e, "REMOTE_USER_AUTHTYPE", SFUauthtype);
 					if (SFUmaillist!=NULL)
 						apr_table_addn(e, "REMOTE_USER_MAILLIST", SFUmaillist);
-					if (SFUckid!=NULL)
-						apr_table_addn(e, "REMOTE_USER_CKID", SFUckid);
 					if (e != r->subprocess_env)
 						apr_table_overlap(r->subprocess_env, e, APR_OVERLAP_TABLES_SET);
 					return OK;
@@ -2340,7 +2322,7 @@ RETRYBASIC:
 		ticket = getCASTicket(r);
 		cookieString = getCASCookie(r, (ssl ? d->CASSecureCookie : d->CASCookie));
 		if (cookieString!=NULL)
-			if(!isValidCASCookie(r, c, cookieString, &remoteUser, &SFUauthtype, &SFUmaillist, &SFUckid, &d->password)) 
+			if(!isValidCASCookie(r, c, cookieString, &remoteUser, &SFUauthtype, &SFUmaillist, &d->password)) 
 				cookieString = NULL;
 	}
 	
@@ -2368,12 +2350,12 @@ RETRYBASIC:
 	/* now, handle when a ticket is present (this will also catch gateway users since ticket != NULL on their trip back) */
 	d->haveTicket = 0;
 	if(ticket != NULL) {
-		if(isValidCASTicket(r, c, ticket, &remoteUser, &SFUauthtype, &SFUmaillist, &d->password, &SFUckid)) {
+		if(isValidCASTicket(r, c, ticket, &remoteUser, &SFUauthtype, &SFUmaillist, &d->password)) {
 			// This is just a flag that causes a redirect to CAS to force a login.
 			d->haveTicket = 1;
 			if(c->CASDebug)
-				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Values from isValidCASTicket remoteUser=%s SFUauthtype=%s SFUMaillist=%s password=%s SFUckid=%s", remoteUser, SFUauthtype, SFUmaillist, d->password, SFUckid);
-			cookieString = createCASCookie(r, remoteUser, ticket, SFUauthtype, SFUmaillist, SFUckid);
+				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Values from isValidCASTicket remoteUser=%s SFUauthtype=%s SFUMaillist=%s password=%s", remoteUser, SFUauthtype, SFUmaillist, d->password);
+			cookieString = createCASCookie(r, remoteUser, ticket, SFUauthtype, SFUmaillist);
 			setCASCookie(r, (ssl ? d->CASSecureCookie : d->CASCookie), cookieString, ssl);
 			r->user = remoteUser;
 			if(d->CASAuthNHeader != NULL)
@@ -2382,8 +2364,6 @@ RETRYBASIC:
 				apr_table_set(r->headers_in, d->CASAuthTypeHeader, SFUauthtype);
 			if (d->CASAuthMaillistHeader != NULL && SFUmaillist != NULL)
 				apr_table_set(r->headers_in, d->CASAuthMaillistHeader, SFUmaillist);
-			if (d->CASAuthCKIDHeader != NULL && SFUckid != NULL)
-				apr_table_set(r->headers_in, d->CASAuthCKIDHeader, SFUckid);
 
             // Setup environment variables for SFU items
             apr_table_t *e;
@@ -2400,11 +2380,7 @@ RETRYBASIC:
 				apr_table_addn(e, "REMOTE_USER_MAILLIST", SFUmaillist);
 				d->maillist = SFUmaillist;
 			}
-			if (SFUckid!=NULL) {
-				apr_table_addn(e, "REMOTE_USER_CKID", SFUckid);
-				d->ckid = SFUckid;
-			}
-            if (e != r->subprocess_env)
+      if (e != r->subprocess_env)
                 apr_table_overlap(r->subprocess_env, e, APR_OVERLAP_TABLES_SET);
 
 			if(parametersRemoved == TRUE) {
@@ -2450,12 +2426,11 @@ RETRYBASIC:
 		redirectRequest(r, c);
 		return HTTP_MOVED_TEMPORARILY;
 	} else {
-		if(isValidCASCookie(r, c, cookieString, &remoteUser, &SFUauthtype, &SFUmaillist, &SFUckid, &d->password)) {
+		if(isValidCASCookie(r, c, cookieString, &remoteUser, &SFUauthtype, &SFUmaillist, &d->password)) {
 			if(c->CASDebug)
-				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Values from isValidCASCookie remoteUser=%s SFUauthtype=%s SFUMaillist=%s password=%s SFUckid=%s", remoteUser, SFUauthtype, SFUmaillist, d->password, SFUckid);
+				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Values from isValidCASCookie remoteUser=%s SFUauthtype=%s SFUMaillist=%s password=%s", remoteUser, SFUauthtype, SFUmaillist, d->password);
 			d->authtype = SFUauthtype;
 			d->maillist = SFUmaillist;
-			d->ckid = SFUckid;
 			r->user = remoteUser==NULL?"":remoteUser;
 			if(d->CASAuthNHeader != NULL)
 				apr_table_set(r->headers_in, d->CASAuthNHeader, r->user);
@@ -2463,16 +2438,14 @@ RETRYBASIC:
 				apr_table_set(r->headers_in, d->CASAuthTypeHeader, SFUauthtype);
 			if (d->CASAuthMaillistHeader != NULL && SFUmaillist != NULL)
 				apr_table_set(r->headers_in, d->CASAuthMaillistHeader, SFUmaillist);
-			if (d->CASAuthCKIDHeader != NULL && SFUckid != NULL)
-				apr_table_set(r->headers_in, d->CASAuthCKIDHeader, SFUckid);
 
-            // Setup environment variables for SFU items
-            apr_table_t *e;
-            if (apr_is_empty_table(r->subprocess_env)) {
-                e = r->subprocess_env;
-            } else {
-                e = apr_table_make(r->pool, 5);
-            }
+			// Setup environment variables for SFU items
+			apr_table_t *e;
+			if (apr_is_empty_table(r->subprocess_env)) {
+					e = r->subprocess_env;
+			} else {
+					e = apr_table_make(r->pool, 5);
+			}
 			if (SFUauthtype!=NULL) {
 				apr_table_addn(e, "REMOTE_USER_AUTHTYPE", SFUauthtype);
 				d->authtype = SFUauthtype;
@@ -2481,12 +2454,8 @@ RETRYBASIC:
 				apr_table_addn(e, "REMOTE_USER_MAILLIST", SFUmaillist);
 				d->maillist = SFUmaillist;
 			}
-			if (SFUckid!=NULL) {
-				apr_table_addn(e, "REMOTE_USER_CKID", SFUckid);
-				d->ckid = SFUckid;
-			}
-            if (e != r->subprocess_env)
-                apr_table_overlap(r->subprocess_env, e, APR_OVERLAP_TABLES_SET);
+			if (e != r->subprocess_env)
+					apr_table_overlap(r->subprocess_env, e, APR_OVERLAP_TABLES_SET);
 			return OK;
 		} else {
 			/* maybe the cookie expired, have the user get a new service ticket */
@@ -2805,7 +2774,6 @@ static const command_rec cas_cmds [] = {
 	AP_INIT_TAKE1("CASAuthNHeader", ap_set_string_slot, (void *) APR_OFFSETOF(cas_dir_cfg, CASAuthNHeader), ACCESS_CONF|OR_AUTHCFG, "Specify the HTTP header variable to set with the name of the CAS authenticated user.  By default no headers are added."),
 	AP_INIT_TAKE1("CASAuthTypeHeader", ap_set_string_slot, (void *) APR_OFFSETOF(cas_dir_cfg, CASAuthTypeHeader), ACCESS_CONF|OR_AUTHCFG, "Specify the HTTP header variable to set with the name of the CAS auth type.  By default no headers are added."),
 	AP_INIT_TAKE1("CASAuthMaillistHeader", ap_set_string_slot, (void *) APR_OFFSETOF(cas_dir_cfg, CASAuthMaillistHeader), ACCESS_CONF|OR_AUTHCFG, "Specify the HTTP header variable to set with the name of the CAS matched maillist.  By default no headers are added."),
-	AP_INIT_TAKE1("CASAuthCKIDHeader", ap_set_string_slot, (void *) APR_OFFSETOF(cas_dir_cfg, CASAuthCKIDHeader), ACCESS_CONF|OR_AUTHCFG, "Specify the HTTP header variable to set with the name of the CAS CKID token.  By default no headers are added."),
 
 	/* ssl related options */
 	AP_INIT_TAKE1("CASValidateServer", cfg_readCASParameter, (void *) cmd_validate_server, RSRC_CONF, "Require validation of CAS server SSL certificate for successful authentication (On or Off)"),

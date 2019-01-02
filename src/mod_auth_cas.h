@@ -108,7 +108,6 @@ typedef int socket_t;
 #define CAS_DEFAULT_AUTHTYPE NULL
 #define CAS_DEFAULT_MAILLIST NULL
 #define CAS_DEFAULT_PASSWORD NULL
-#define CAS_DEFAULT_CKID NULL
 #define CAS_DEFAULT_PWFILE NULL
 #define CAS_DEFAULT_GPFILE NULL
 #define CAS_DEFAULT_AUTHORITATIVE 1
@@ -118,7 +117,6 @@ typedef int socket_t;
 #define CAS_DEFAULT_USEAUTHTYPE CAS_AUTHTYPE_CAS
 #define CAS_DEFAULT_AUTHTYPE_HEADER "CAS-Authtype"
 #define CAS_DEFAULT_MAILLIST_HEADER "CAS-Maillist"
-#define CAS_DEFAULT_CKID_HEADER "CAS-CKID"
 
 #define CAS_MAX_RESPONSE_SIZE 4096
 #define CAS_MAX_ERROR_SIZE 1024
@@ -157,7 +155,6 @@ typedef struct cas_dir_cfg {
 	char *authtype;
 	char *maillist;
 	char *password;
-	char *ckid;
 	char *pwfile;
 	char *gpfile;
 	int authoritative;
@@ -165,7 +162,6 @@ typedef struct cas_dir_cfg {
 	int useauthtype;
 	char *CASAuthTypeHeader;
 	char *CASAuthMaillistHeader;
-	char *CASAuthCKIDHeader;
 } cas_dir_cfg;
 
 typedef struct cas_cache_entry {
@@ -179,7 +175,6 @@ typedef struct cas_cache_entry {
 	/* The following are for the SFU extensions */
 	char *authtype;
 	char *maillist;
-	char *ckid;
 	char *password;
 } cas_cache_entry;
 
@@ -199,14 +194,14 @@ static const char *cfg_readCASParameter(cmd_parms *cmd, void *cfg, const char *v
 static apr_byte_t check_cert_cn(request_rec *r, cas_cfg *c, SSL_CTX *ctx, X509 *certificate, char *cn);
 static void CASCleanupSocket(socket_t s, SSL *ssl, SSL_CTX *ctx);
 static char *getResponseFromServer (request_rec *r, cas_cfg *c, char *ticket);
-static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, char **user, char **authtype, char **maillist, char **password, char **ckid);
+static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, char **user, char **authtype, char **maillist, char **password);
 static apr_byte_t isSSL(request_rec *r);
 static apr_byte_t readCASCacheFile(request_rec *r, cas_cfg *c, char *name, cas_cache_entry *cache);
 static void CASCleanCache(request_rec *r, cas_cfg *c);
-static apr_byte_t isValidCASCookie(request_rec *r, cas_cfg *c, char *cookie, char **user, char **authtype, char **maillist, char **ckid, char **password);
+static apr_byte_t isValidCASCookie(request_rec *r, cas_cfg *c, char *cookie, char **user, char **authtype, char **maillist, char **password);
 static char *getCASCookie(request_rec *r, char *cookieName);
 static apr_byte_t writeCASCacheEntry(request_rec *r, char *name, cas_cache_entry *cache, apr_byte_t exists);
-static char *createCASCookie(request_rec *r, char *user, char *ticket, char *authtype, char *maillist, char *ckid);
+static char *createCASCookie(request_rec *r, char *user, char *ticket, char *authtype, char *maillist);
 static void expireCASST(request_rec *r, char *ticketname);
 #ifdef BROKEN
 static void CASSAMLLogout(request_rec *r, char *body);
