@@ -1615,10 +1615,10 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 			
 				// TODO: Check that username and password are not null. Return false if null.
 				if(c->CASDebug)
-					ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Trying to open htpasswd file '%s'", d->pwfile==NULL?"(NULL)":d->pwfile);
+					ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "isValidCASTicket: Trying to open htpasswd file '%s'", d->pwfile==NULL?"(NULL)":d->pwfile);
 				if (APR_SUCCESS == ap_pcfg_openfile(&f, r->pool, d->pwfile)) {
 					if (c->CASDebug)
-						ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Successfully opened '%s'", d->pwfile);
+						ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "isValidCASTicket: Successfully opened '%s'", d->pwfile);
 			
 					while (!(ap_cfg_getline(l, CAS_MAX_RESPONSE_SIZE, f))) {
 						if ((l[0] == '#') || (l[0] == 0)) continue; // ignore comment or blank lines
@@ -1626,14 +1626,14 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 						if (!strncmp(l, user, strlen(user)) && l[strlen(user)]==':') {
 							if (APR_SUCCESS == apr_password_validate(d->password, l+strlen(user)+1)) {
 								if (c->CASDebug)
-									ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Successfully validated password for '%s'", user);
+									ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "isValidCASTicket: Successfully validated password for '%s'", user);
 								return TRUE;
 							}
 						}
 					}
 				} else {
 					if (c->CASDebug)
-						ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Unable to opened '%s'", d->pwfile);
+						ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "isValidCASTicket: Unable to opened '%s'", d->pwfile);
 				}
 				return FALSE;
 			}
