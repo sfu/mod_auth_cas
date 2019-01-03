@@ -2526,6 +2526,237 @@ static int cas_post_config(apr_pool_t *pool, apr_pool_t *p1, apr_pool_t *p2, ser
 	return OK;
 }
 
+// Added 
+// Similar to cas_check_authorization in the new standard mod_auth_cas for 2.4
+#if MODULE_MAGIC_NUMBER_MAJOR >= 20120211
+
+// require valid-sfu-user
+authz_status cas_check_authz_valid_sfu_user(request_rec *r, const char *require_line, const void *parsed_require_line)
+{
+	// cas_cfg is the global configuration of this module, i.e., mod_auth_cas
+	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
+	
+	// Each parsed .htaccess will be stored in *d 
+	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
+
+	if (!strcasecmp(d->authtype, "sfu")) return AUTHZ_GRANTED;
+
+	return AUTHZ_DENIED;
+}
+
+static const authz_provider authz_valid_sfu_user_provider =
+{
+        &cas_check_authz_valid_sfu_user,
+        NULL,
+};
+
+
+// require sfu-user [uid1] [uid2] [!mail-list1] [!mail-list2]
+authz_status cas_check_authz_sfu_user(request_rec *r, const char *require_line, const void *parsed_require_line)
+{
+	// cas_cfg is the global configuration of this module, i.e., mod_auth_cas
+	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
+	
+	// Each parsed .htaccess will be stored in *d 
+	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
+
+	const char *t, *w;
+
+	t = require_line;
+	if (c->CASDEBUG) 
+	{
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "*****The current require line: %s", require_line); 
+	}
+	
+	// Use w[0] to check if w is a NULL string
+	// Parse the require line to look at each word
+	while ((w == ap_getword_conf(r->pool, &t)) && w[0])
+	{
+		if (w[0] == '!') {
+			if (d->maillist!=NULL && !strcasecmp(w+1, d->maillist)) return AUTHZ_GRANTED;
+		} else {
+			if (!strcasecmp(d->authtype, "sfu") && !strcasecmp(w, r->user)) return AUTHZ_GRANTED;
+		}	
+	}
+	
+	return AUTHZ_DENIED;
+}
+
+static const authz_provider authz_sfu_user_provider =
+{
+        &cas_check_authz_sfu_user,
+        NULL,
+};
+
+
+// require valid-sfu-staff
+authz_status cas_check_authz_valid_sfu_staff(request_rec *r, const char *require_line, const void *parsed_require_line)
+{
+	// cas_cfg is the global configuration of this module, i.e., mod_auth_cas
+	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
+	
+	// Each parsed .htaccess will be stored in *d 
+	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
+
+	if (!strcasecmp(d->authtype, "staff")) return AUTHZ_GRANTED;
+
+	return AUTHZ_DENIED;
+}
+
+static const authz_provider authz_valid_sfu_staff_provider =
+{
+        &cas_check_authz_valid_sfu_staff,
+        NULL,
+};
+
+
+authz_status cas_check_authz_valid_sfu_student(request_rec *r, const char *require_line, const void *parsed_require_line)
+{
+	// cas_cfg is the global configuration of this module, i.e., mod_auth_cas
+	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
+	
+	// Each parsed .htaccess will be stored in *d 
+	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
+
+	if (!strcasecmp(d->authtype, "student")) return AUTHZ_GRANTED;
+
+	return AUTHZ_DENIED;
+}
+
+static const authz_provider authz_valid_sfu_student_provider =
+{
+        &cas_check_authz_valid_sfu_student,
+        NULL,
+};
+
+
+authz_status cas_check_authz_valid_sfu_sponsored(request_rec *r, const char *require_line, const void *parsed_require_line)
+{
+	// cas_cfg is the global configuration of this module, i.e., mod_auth_cas
+	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
+	
+	// Each parsed .htaccess will be stored in *d 
+	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
+
+	if (!strcasecmp(d->authtype, "sponsored")) return AUTHZ_GRANTED;
+
+	return AUTHZ_DENIED;
+
+}
+
+static const authz_provider authz_valid_sfu_sponsored_provider =
+{
+        &cas_check_authz_valid_sfu_sponsored,
+        NULL,
+};
+
+
+authz_status cas_check_authz_valid_sfu_external(request_rec *r, const char *require_line, const void *parsed_require_line)
+{
+	// cas_cfg is the global configuration of this module, i.e., mod_auth_cas
+	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
+	
+	// Each parsed .htaccess will be stored in *d 
+	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
+
+	if (!strcasecmp(d->authtype, "external")) return AUTHZ_GRANTED;
+
+	return AUTHZ_DENIED;
+}
+
+static const authz_provider authz_valid_sfu_external_provider =
+{
+        &cas_check_authz_valid_sfu_external,
+        NULL,
+};
+
+
+// require valid-alumni-user
+authz_status cas_check_authz_valid_alumni_user(request_rec *r, const char *require_line, const void *parsed_require_line)
+{
+	// cas_cfg is the global configuration of this module, i.e., mod_auth_cas
+	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
+	
+	// Each parsed .htaccess will be stored in *d 
+	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
+
+	if (!strcasecmp(d->authtype, "alumni")) return AUTHZ_GRANTED;
+
+	return AUTHZ_DENIED;
+}
+
+static const authz_provider authz_valid_alumni_user_provider =
+{
+        &cas_check_authz_valid_alumni_user,
+        NULL,
+};
+
+
+// require alumni-user [user1] [user2] 
+authz_status cas_check_authz_alumni_user(request_rec *r, const char *require_line, const void *parsed_require_line)
+{
+	if (strcasecmp(d->authtype, "alumni")) return AUTHZ_DENIED;
+
+	t = require_line;
+	if (c->CASDEBUG) 
+	{
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "*****The current require line: %s", require_line); 
+	}
+	
+	int len = strlen(r->user);
+	if (strchr(r->user, '@')) {
+					len = strchr(r->user, '@') - r->user;
+	}
+	
+	// Use w[0] to check if w is a NULL string
+	// Parse the require line to look at each word
+	while ((w == ap_getword_conf(r->pool, &t)) && w[0])
+	{
+		if (!strncmp(w, r->user, len)) return AUTHZ_GRANTED;	
+	}
+	
+	return AUTHZ_DENIED;
+}
+
+static const authz_provider authz_alumni_user_provider =
+{
+        &cas_check_authz_alumni_user,
+        NULL,
+};
+
+
+// See the code in cas_user_access(request_rec *r) 
+// require valid-user
+authz_status cas_check_authz_valid_user(request_rec *r, const char *require_line, const void *parsed_require_line)
+{
+	// Check if there is a .htpasswd
+	// if there isn't a .htpasswd
+	if (d->pwfile == NULL) return cas_check_authz_valid_sfu_user(r, require_line, parsed_require_line);
+	
+	// Open and parse the .htpasswd 
+	
+}
+
+static const authz_provider authz_valid_user_provider =
+{
+        &cas_check_authz_valid_user,
+        NULL,
+};
+
+// require user
+authz_status cas_check_authz_user(request_rec *r, const char *require_line, const void *parsed_require_line)
+{
+
+}
+
+static const authz_provider authz_user_provider =
+{
+        &cas_check_authz_valid_user,
+        NULL,
+};
+
+#else
+
 // Checking authorization
 static int cas_user_access(request_rec *r)
 {
@@ -2747,6 +2978,7 @@ static int cas_user_access(request_rec *r)
 		return HTTP_MOVED_TEMPORARILY;
 	}
 }
+#endif
 
 #ifdef BROKEN
 static apr_status_t cas_in_filter(ap_filter_t *f, apr_bucket_brigade *bb, ap_input_mode_t mode, apr_read_type_e block, apr_off_t readbytes) {
