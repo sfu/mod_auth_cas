@@ -627,7 +627,6 @@ static char *getCASAllow(request_rec *r) {
 		/* Check in the password file for users */
 		if (d->pwfile) {
 			char l[CAS_MAX_RESPONSE_SIZE+1];
-			const char *rpw, *w;
 			
 			if(c->CASDebug)
 				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "getCASAllow: Trying to open htpasswd file '%s'", d->pwfile==NULL?"(NULL)":d->pwfile);
