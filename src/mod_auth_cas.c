@@ -202,11 +202,11 @@ static void *cas_merge_dir_config(apr_pool_t *pool, void *BASE, void *ADD)
 	if(add->CASGateway != NULL && strcasecmp(add->CASGateway, "Off") == 0)
 		c->CASGateway = NULL;
 
-	c->CASCookie = (add->CASCookie != CAS_DEFAULT_COOKIE ? add->CASCookie : base->CASCookie);
-	c->CASSecureCookie = (add->CASSecureCookie != CAS_DEFAULT_SCOOKIE ? add->CASSecureCookie : base->CASSecureCookie);
-	c->CASGatewayCookie = (add->CASGatewayCookie != CAS_DEFAULT_GATEWAY_COOKIE ? add->CASGatewayCookie : base->CASGatewayCookie);
+	c->CASCookie = (apr_strnatcasecmp(add->CASCookie, CAS_DEFAULT_COOKIE) != 0 ? add->CASCookie : base->CASCookie);
+	c->CASSecureCookie = (apr_strnatcasecmp(add->CASSecureCookie, CAS_DEFAULT_SCOOKIE) != 0 ? add->CASSecureCookie : base->CASSecureCookie);
+	c->CASGatewayCookie = (apr_strnatcasecmp(add->CASGatewayCookie, CAS_DEFAULT_GATEWAY_COOKIE) != 0 ? add->CASGatewayCookie : base->CASGatewayCookie);
 	
-	c->CASAuthNHeader = (add->CASAuthNHeader != CAS_DEFAULT_AUTHN_HEADER ? add->CASAuthNHeader : base->CASAuthNHeader);
+	c->CASAuthNHeader = (apr_strnatcasecmp(add->CASAuthNHeader, CAS_DEFAULT_AUTHN_HEADER) != 0 ? add->CASAuthNHeader : base->CASAuthNHeader);
 	/* SFU Extensions */
 	c->authtype = add->authtype;
 	c->maillist = add->maillist;
@@ -216,8 +216,8 @@ static void *cas_merge_dir_config(apr_pool_t *pool, void *BASE, void *ADD)
 	c->authoritative = (add->authoritative != CAS_DEFAULT_AUTHORITATIVE ? add->authoritative : base->authoritative);
 	c->haveTicket = add->haveTicket;
 	c->useauthtype = (add->useauthtype != CAS_DEFAULT_USEAUTHTYPE ? add->useauthtype : base->useauthtype);
-	c->CASAuthTypeHeader = (add->CASAuthTypeHeader != CAS_DEFAULT_AUTHTYPE_HEADER ? add->CASAuthTypeHeader : base->CASAuthTypeHeader);
-	c->CASAuthMaillistHeader = (add->CASAuthMaillistHeader != CAS_DEFAULT_MAILLIST_HEADER ? add->CASAuthMaillistHeader : base->CASAuthMaillistHeader);
+	c->CASAuthTypeHeader = (apr_strnatcasecmp(add->CASAuthTypeHeader, CAS_DEFAULT_AUTHTYPE_HEADER) != 0 ? add->CASAuthTypeHeader : base->CASAuthTypeHeader);
+	c->CASAuthMaillistHeader = (apr_strnatcasecmp(add->CASAuthMaillistHeader, CAS_DEFAULT_MAILLIST_HEADER) != 0 ? add->CASAuthMaillistHeader : base->CASAuthMaillistHeader);
 	return(c);
 }
 
