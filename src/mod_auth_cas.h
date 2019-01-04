@@ -48,9 +48,13 @@
 #include <stddef.h>
 #include "ap_release.h"
 
+// @@@
 #if MODULE_MAGIC_NUMBER_MAJOR >= 20120211
 #include "mod_auth.h"
 #endif
+
+// @@@
+#include "cas_saml_attr.h"
 
 #ifndef AP_SERVER_MAJORVERSION_NUMBER
 	#ifndef AP_SERVER_MINORVERSION_NUMBER
@@ -180,6 +184,8 @@ typedef struct cas_cache_entry {
 	char *authtype;
 	char *maillist;
 	char *password;
+	// @@@
+	cas_saml_attr *attrs;
 } cas_cache_entry;
 
 typedef enum { 
@@ -198,14 +204,22 @@ static const char *cfg_readCASParameter(cmd_parms *cmd, void *cfg, const char *v
 static apr_byte_t check_cert_cn(request_rec *r, cas_cfg *c, SSL_CTX *ctx, X509 *certificate, char *cn);
 static void CASCleanupSocket(socket_t s, SSL *ssl, SSL_CTX *ctx);
 static char *getResponseFromServer (request_rec *r, cas_cfg *c, char *ticket);
+
+// TODO:
+// Add a new param, cas_saml_attr **attrs
 static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, char **user, char **authtype, char **maillist, char **password);
+
 static apr_byte_t isSSL(request_rec *r);
 static apr_byte_t readCASCacheFile(request_rec *r, cas_cfg *c, char *name, cas_cache_entry *cache);
 static void CASCleanCache(request_rec *r, cas_cfg *c);
 static apr_byte_t isValidCASCookie(request_rec *r, cas_cfg *c, char *cookie, char **user, char **authtype, char **maillist, char **password);
 static char *getCASCookie(request_rec *r, char *cookieName);
 static apr_byte_t writeCASCacheEntry(request_rec *r, char *name, cas_cache_entry *cache, apr_byte_t exists);
+
+// TODO:
+// Add a new param, cas_saml_attr *attrs, between *user and *ticket
 static char *createCASCookie(request_rec *r, char *user, char *ticket, char *authtype, char *maillist);
+
 static void expireCASST(request_rec *r, char *ticketname);
 #ifdef BROKEN
 static void CASSAMLLogout(request_rec *r, char *body);

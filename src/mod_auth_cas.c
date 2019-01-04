@@ -522,6 +522,7 @@ static char *getRealmAsMessage(request_rec *r) {
 	return "";
 }
 
+// It builds the "allow" string before redirecting to CAS login
 static char *getCASAllow(request_rec *r) {
 	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
 	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
@@ -539,6 +540,7 @@ static char *getCASAllow(request_rec *r) {
 
 	/* Look at the type of users that are allowed into this page so that we can let CAS know */
 #if MODULE_MAGIC_NUMBER_MAJOR >= 20120211
+	// Always add "allow=sfu"
 	allowSFU=1;
 #else
 	const apr_array_header_t *requirements_array = ap_requires(r);
@@ -628,6 +630,7 @@ static char *getCASAllow(request_rec *r) {
 	}
 #endif
 	{
+		// Process the .htpasswd
 		ap_configfile_t *f;
 		/* Check in the password file for users */
 		if (d->pwfile) {
@@ -660,6 +663,8 @@ static char *getCASAllow(request_rec *r) {
 			}
 		}
 	}
+	// allowSFU is always 1 for 2.4 
+	// allowSFU is not always 1 for 2.2
 	if (allowSFU) {
 		allowString = apr_pstrcat(r->pool, allowString, ",sfu", NULL);
 	}
@@ -1336,6 +1341,10 @@ static char *createBasicCASCacheName(request_rec *r) {
 	
 }
 
+// TODO:
+// Change it to *createCASCookie(request_rec *r, char *user, cas_saml_attr *attrs, char *ticket, char *authtype, char *maillist)
+// The cookie contains an id of a cache session file 
+// Note that there are cases where no cookie needs to be created, for instance, BASIC authentication.
 static char *createCASCookie(request_rec *r, char *user, char *ticket, char *authtype, char *maillist)
 {
 	char *path, *buf, *rv;
@@ -1515,6 +1524,11 @@ static void deleteCASCacheFile(request_rec *r, char *cookieName)
 
 /* functions related to validation of tickets/cache entries */
 // It checks the service ticket.
+// TODO: 
+// Add a new parameter, cas_saml_attr **attrs (See isValidCASTicket in the new standard mod_auth_cas)
+// Add cas_saml_attr.h and cas_saml_attr.c
+// Parse the returned CAS response from p3/serviceValidate to extract the user attributes and pass back a pointer 
+// that points to a new *cas_saml_attr 
 static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, char **user, char **authtype, char **maillist, char **password)
 {
 	char *line;
@@ -2605,6 +2619,8 @@ authz_status cas_check_authz_valid_sfu_staff(request_rec *r, const char *require
 	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
 
 	if (!strcasecmp(d->authtype, "staff")) return AUTHZ_GRANTED;
+	// TODO:
+	// Check the attributes returned from CAS p3/serviceValidate
 
 	return AUTHZ_DENIED;
 }
