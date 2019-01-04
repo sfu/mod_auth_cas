@@ -1318,7 +1318,11 @@ static char *createBasicCASCacheName(request_rec *r) {
 	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
 	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
 
+#if MODULE_MAGIC_NUMBER_MAJOR >= 20120211
+	char *buf = apr_pstrcat(r->pool, r->connection->client_ip, r->user, d->password, r->ap_auth_type, getCASPath(r), NULL);
+#else
 	char *buf = apr_pstrcat(r->pool, r->connection->remote_ip, r->user, d->password, r->ap_auth_type, getCASPath(r), NULL);
+#indif
 	char *cacheName = (char *) ap_md5_binary(r->pool, (unsigned char *) buf, strlen(buf));
 
 	if(c->CASDebug)
