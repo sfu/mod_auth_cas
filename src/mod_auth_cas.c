@@ -2715,6 +2715,7 @@ static const authz_provider authz_alumni_user_provider =
 // require valid-user
 authz_status cas_check_authz_valid_user(request_rec *r, const char *require_line, const void *parsed_require_line)
 {
+	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
 	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
 
 	// Check if there is a .htpasswd
@@ -2724,7 +2725,6 @@ authz_status cas_check_authz_valid_user(request_rec *r, const char *require_line
 	// Open and parse the .htpasswd 
 	ap_configfile_t *f;
 	char l[CAS_MAX_RESPONSE_SIZE+1];
-	const char *rpw, *w;
 					
 	if(c->CASDebug)
 		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_check_authz_valid_user: Trying to open htpasswd file '%s'", d->pwfile==NULL?"(NULL)":d->pwfile);
