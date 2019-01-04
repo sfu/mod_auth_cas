@@ -2535,9 +2535,6 @@ static int cas_post_config(apr_pool_t *pool, apr_pool_t *p1, apr_pool_t *p2, ser
 // require valid-sfu-user
 authz_status cas_check_authz_valid_sfu_user(request_rec *r, const char *require_line, const void *parsed_require_line)
 {
-	// cas_cfg is the global configuration of this module, i.e., mod_auth_cas
-	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
-	
 	// Each parsed .htaccess will be stored in *d 
 	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
 
@@ -2594,9 +2591,6 @@ static const authz_provider authz_sfu_user_provider =
 // require valid-sfu-staff
 authz_status cas_check_authz_valid_sfu_staff(request_rec *r, const char *require_line, const void *parsed_require_line)
 {
-	// cas_cfg is the global configuration of this module, i.e., mod_auth_cas
-	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
-	
 	// Each parsed .htaccess will be stored in *d 
 	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
 
@@ -2614,9 +2608,6 @@ static const authz_provider authz_valid_sfu_staff_provider =
 
 authz_status cas_check_authz_valid_sfu_student(request_rec *r, const char *require_line, const void *parsed_require_line)
 {
-	// cas_cfg is the global configuration of this module, i.e., mod_auth_cas
-	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
-	
 	// Each parsed .htaccess will be stored in *d 
 	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
 
@@ -2634,9 +2625,6 @@ static const authz_provider authz_valid_sfu_student_provider =
 
 authz_status cas_check_authz_valid_sfu_sponsored(request_rec *r, const char *require_line, const void *parsed_require_line)
 {
-	// cas_cfg is the global configuration of this module, i.e., mod_auth_cas
-	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
-	
 	// Each parsed .htaccess will be stored in *d 
 	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
 
@@ -2655,9 +2643,6 @@ static const authz_provider authz_valid_sfu_sponsored_provider =
 
 authz_status cas_check_authz_valid_sfu_external(request_rec *r, const char *require_line, const void *parsed_require_line)
 {
-	// cas_cfg is the global configuration of this module, i.e., mod_auth_cas
-	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
-	
 	// Each parsed .htaccess will be stored in *d 
 	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
 
@@ -2676,9 +2661,6 @@ static const authz_provider authz_valid_sfu_external_provider =
 // require valid-alumni-user
 authz_status cas_check_authz_valid_alumni_user(request_rec *r, const char *require_line, const void *parsed_require_line)
 {
-	// cas_cfg is the global configuration of this module, i.e., mod_auth_cas
-	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
-	
 	// Each parsed .htaccess will be stored in *d 
 	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
 
@@ -2697,23 +2679,25 @@ static const authz_provider authz_valid_alumni_user_provider =
 // require alumni-user [user1] [user2] 
 authz_status cas_check_authz_alumni_user(request_rec *r, const char *require_line, const void *parsed_require_line)
 {
+	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
+	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
+	const char *t, *w;
+
 	if (strcasecmp(d->authtype, "alumni")) return AUTHZ_DENIED;
 
 	t = require_line;
-	if (c->CASDEBUG) 
-	{
+	if (c->CASDebug) {
 		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "*****The current require line: %s", require_line); 
 	}
 	
 	int len = strlen(r->user);
 	if (strchr(r->user, '@')) {
-					len = strchr(r->user, '@') - r->user;
+		len = strchr(r->user, '@') - r->user;
 	}
 	
 	// Use w[0] to check if w is a NULL string
 	// Parse the require line to look at each word
-	while ((w == ap_getword_conf(r->pool, &t)) && w[0])
-	{
+	while ((w == ap_getword_conf(r->pool, &t)) && w[0]) {
 		if (!strncmp(w, r->user, len)) return AUTHZ_GRANTED;	
 	}
 	
