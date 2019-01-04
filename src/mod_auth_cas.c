@@ -1344,7 +1344,7 @@ static char *createCASCookie(request_rec *r, char *user, char *ticket, char *aut
 	buf = apr_pcalloc(r->pool, c->CASCookieEntropy);
 
 	if(c->CASDebug)
-		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "entering createCASCookie(,%s,%s,%s,%s,%s,%s)",user,ticket,authtype,maillist,d->password);
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "entering createCASCookie(,%s,%s,%s,%s,%s)",user,ticket,authtype,maillist,d->password);
 
 	CASCleanCache(r, c);
 
