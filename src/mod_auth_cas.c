@@ -2565,7 +2565,7 @@ authz_status cas_check_authz_sfu_user(request_rec *r, const char *require_line, 
 	const char *t, *w;
 
 	t = require_line;
-	if (c->CASDEBUG) 
+	if (c->CASDebug) 
 	{
 		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "*****The current require line: %s", require_line); 
 	}
