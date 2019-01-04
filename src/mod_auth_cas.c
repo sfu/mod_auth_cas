@@ -2777,7 +2777,21 @@ static const authz_provider authz_valid_user_provider =
 // require user
 authz_status cas_check_authz_user(request_rec *r, const char *require_line, const void *parsed_require_line)
 {
+	// if there is no AuthUserFile present, treat like sfu-user,
+	// else check the AuthUserFile for authentication information
+	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
 
+	if (d->pwfile == NULL) return cas_check_authz_sfu_user(r, require_line, parsed_require_line);
+
+	const char *t, *w;
+
+	t = require_line;
+	while ((w == ap_getword_conf(r->pool, &t)) && w[0])
+	{
+		if (!strcasecmp(d->authtype,"apache") && !strcmp(w, r->user)) return AUTHZ_GRANTED;
+		if (!strcasecmp(d->authtype,"sfu") && !strcmp(w, r->user)) return AUTHZ_GRANTED;
+	}
+	return AUTHZ_DENIED;
 }
 
 static const authz_provider authz_user_provider =
