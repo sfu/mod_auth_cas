@@ -2255,6 +2255,7 @@ RETRYBASIC:
 	if (r->ap_auth_type!=NULL && 0==apr_strnatcasecmp((const char *) r->ap_auth_type, "basic")) {
 		if(c->CASDebug)
 			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Entering Basic authentication. useauthtype=%s ap_auth_type=%s", (d->useauthtype==CAS_AUTHTYPE_BASIC)?"basic":(d->useauthtype==CAS_AUTHTYPE_BOTH)?"both":"unknown", (const char *) ap_auth_type(r));
+#if MODULE_MAGIC_NUMBER_MAJOR < 20120211
 		{
 		    core_dir_config *conf;
 			conf = (core_dir_config *)ap_get_module_config(r->per_dir_config, &core_module);
@@ -2263,6 +2264,7 @@ RETRYBASIC:
 				conf->ap_auth_name = "SFU CAS";
 			}
 		}
+#endif
 		// Now check to see if the browser provided a user/pw
 		{
 			const char *auth_line;
