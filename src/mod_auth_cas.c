@@ -1607,13 +1607,14 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 			}
 			
 			// Check username and password against that in .htpasswd
-			// TODO: Check that authtype is not null
-			// if (!strcasecmp(authtype,"apache")) {
 			if ((authtype != NULL) && !strcasecmp(authtype,"apache")) {
 				ap_configfile_t *f;
 				char l[CAS_MAX_RESPONSE_SIZE+1];
 			
-				// TODO: Check that username and password are not null. Return false if null.
+				// Check that username and password are not null. Return false if null.
+				if (!gotUser) return FALSE;
+				if (*password==NULL) return FALSE;
+				
 				if(c->CASDebug)
 					ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "isValidCASTicket: Trying to open htpasswd file '%s'", d->pwfile==NULL?"(NULL)":d->pwfile);
 				if (APR_SUCCESS == ap_pcfg_openfile(&f, r->pool, d->pwfile)) {
@@ -1623,10 +1624,10 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 					while (!(ap_cfg_getline(l, CAS_MAX_RESPONSE_SIZE, f))) {
 						if ((l[0] == '#') || (l[0] == 0)) continue; // ignore comment or blank lines
 						if (l[0] == '+') continue; // an SFU line
-						if (!strncmp(l, user, strlen(user)) && l[strlen(user)]==':') {
-							if (APR_SUCCESS == apr_password_validate(d->password, l+strlen(user)+1)) {
+						if (!strncmp(l, *user, strlen(*user)) && l[strlen(*user)]==':') {
+							if (APR_SUCCESS == apr_password_validate(*password, l+strlen(*user)+1)) {
 								if (c->CASDebug)
-									ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "isValidCASTicket: Successfully validated password for '%s'", user);
+									ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "isValidCASTicket: Successfully validated password for '%s'", *user);
 								return TRUE;
 							}
 						}
