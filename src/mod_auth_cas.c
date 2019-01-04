@@ -1610,7 +1610,7 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 			}
 			
 			// Check username and password against that in .htpasswd
-			if ((authtype != NULL) && !strcasecmp(authtype,"apache")) {
+			if ((authtype != NULL) && (*authtype != NULL) && !strcasecmp(*authtype,"apache")) {
 				cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
 				ap_configfile_t *f;
 				char l[CAS_MAX_RESPONSE_SIZE+1];
