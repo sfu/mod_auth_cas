@@ -2730,12 +2730,42 @@ static const authz_provider authz_alumni_user_provider =
 // require valid-user
 authz_status cas_check_authz_valid_user(request_rec *r, const char *require_line, const void *parsed_require_line)
 {
+	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
+
 	// Check if there is a .htpasswd
-	// if there isn't a .htpasswd
+	// if there isn't a .htpasswd, treat like "require valid-sfu-user"
 	if (d->pwfile == NULL) return cas_check_authz_valid_sfu_user(r, require_line, parsed_require_line);
 	
 	// Open and parse the .htpasswd 
-	
+	ap_configfile_t *f;
+	char l[CAS_MAX_RESPONSE_SIZE+1];
+	const char *rpw, *w;
+					
+	if(c->CASDebug)
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_check_authz_valid_user: Trying to open htpasswd file '%s'", d->pwfile==NULL?"(NULL)":d->pwfile);
+	if (APR_SUCCESS != ap_pcfg_openfile(&f, r->pool, d->pwfile)) return AUTHZ_GENERAL_ERROR;
+	if (c->CASDebug)
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Successfully opened '%s'", d->pwfile);
+					
+	while (!(ap_cfg_getline(l, CAS_MAX_RESPONSE_SIZE, f))) {
+		if (c->CASDebug)
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Line read from htpasswd file '%s'", l);
+		if ((l[0] == '#') || (l[0] == 0)) continue; // ignore comment or blank lines
+		if (l[0] == '+') {
+			if (l[1] == '!') {
+				if (d->maillist!=NULL && !strcasecmp(l+2,d->maillist)) {ap_cfg_closefile(f);return AUTHZ_GRANTED;}
+			} else {
+				if (!strcasecmp(d->authtype,"sfu")) {
+					if (l[1] == 0) {ap_cfg_closefile(f);return AUTHZ_GRANTED;}
+					else if (!strcmp(l+1, r->user)) {ap_cfg_closefile(f);return AUTHZ_GRANTED;}
+				}
+			}
+		} else if (!strcasecmp(d->authtype, "apache") && 
+				!strncmp(l, r->user, strlen(r->user)) &&
+				l[strlen(r->user)]==':') {ap_cfg_closefile(f);return AUTHZ_GRANTED;}
+	}
+	ap_cfg_closefile(f);
+	return AUTHZ_DENIED;
 }
 
 static const authz_provider authz_valid_user_provider =
