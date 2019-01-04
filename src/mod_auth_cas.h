@@ -48,6 +48,10 @@
 #include <stddef.h>
 #include "ap_release.h"
 
+#if MODULE_MAGIC_NUMBER_MAJOR >= 20120211
+#include "mod_auth.h"
+#endif
+
 #ifndef AP_SERVER_MAJORVERSION_NUMBER
 	#ifndef AP_SERVER_MINORVERSION_NUMBER
 		#define APACHE2_0
