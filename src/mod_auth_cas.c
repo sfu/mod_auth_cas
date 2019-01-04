@@ -2575,7 +2575,7 @@ authz_status cas_check_authz_sfu_user(request_rec *r, const char *require_line, 
 	
 	// Use w[0] to check if w is a NULL string
 	// Parse the require line to look at each word
-	while ((w == ap_getword_conf(r->pool, &t)) && w[0])
+	while ((w = ap_getword_conf(r->pool, &t)) && w[0])
 	{
 		if (w[0] == '!') {
 			if (d->maillist!=NULL && !strcasecmp(w+1, d->maillist)) return AUTHZ_GRANTED;
@@ -2703,7 +2703,7 @@ authz_status cas_check_authz_alumni_user(request_rec *r, const char *require_lin
 	
 	// Use w[0] to check if w is a NULL string
 	// Parse the require line to look at each word
-	while ((w == ap_getword_conf(r->pool, &t)) && w[0]) {
+	while ((w = ap_getword_conf(r->pool, &t)) && w[0]) {
 		if (!strncmp(w, r->user, len)) return AUTHZ_GRANTED;	
 	}
 	
@@ -2777,7 +2777,7 @@ authz_status cas_check_authz_user(request_rec *r, const char *require_line, cons
 	const char *t, *w;
 
 	t = require_line;
-	while ((w == ap_getword_conf(r->pool, &t)) && w[0])
+	while ((w = ap_getword_conf(r->pool, &t)) && w[0])
 	{
 		if (!strcasecmp(d->authtype,"apache") && !strcmp(w, r->user)) return AUTHZ_GRANTED;
 		if (!strcasecmp(d->authtype,"sfu") && !strcmp(w, r->user)) return AUTHZ_GRANTED;
