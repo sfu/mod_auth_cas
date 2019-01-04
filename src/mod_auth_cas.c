@@ -2745,11 +2745,11 @@ authz_status cas_check_authz_valid_user(request_rec *r, const char *require_line
 		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_check_authz_valid_user: Trying to open htpasswd file '%s'", d->pwfile==NULL?"(NULL)":d->pwfile);
 	if (APR_SUCCESS != ap_pcfg_openfile(&f, r->pool, d->pwfile)) return AUTHZ_GENERAL_ERROR;
 	if (c->CASDebug)
-		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Successfully opened '%s'", d->pwfile);
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_check_authz_valid_user: Successfully opened '%s'", d->pwfile);
 					
 	while (!(ap_cfg_getline(l, CAS_MAX_RESPONSE_SIZE, f))) {
 		if (c->CASDebug)
-			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Line read from htpasswd file '%s'", l);
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_check_authz_valid_user: Line read from htpasswd file '%s'", l);
 		if ((l[0] == '#') || (l[0] == 0)) continue; // ignore comment or blank lines
 		if (l[0] == '+') {
 			if (l[1] == '!') {
