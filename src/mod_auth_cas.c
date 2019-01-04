@@ -1322,7 +1322,7 @@ static char *createBasicCASCacheName(request_rec *r) {
 	char *buf = apr_pstrcat(r->pool, r->connection->client_ip, r->user, d->password, r->ap_auth_type, getCASPath(r), NULL);
 #else
 	char *buf = apr_pstrcat(r->pool, r->connection->remote_ip, r->user, d->password, r->ap_auth_type, getCASPath(r), NULL);
-#indif
+#endif
 	char *cacheName = (char *) ap_md5_binary(r->pool, (unsigned char *) buf, strlen(buf));
 
 	if(c->CASDebug)
