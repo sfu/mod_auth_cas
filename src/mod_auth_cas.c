@@ -538,6 +538,9 @@ static char *getCASAllow(request_rec *r) {
 	char *allowString = "";
 
 	/* Look at the type of users that are allowed into this page so that we can let CAS know */
+#if MODULE_MAGIC_NUMBER_MAJOR >= 20120211
+	allowSFU=1;
+#else
 	const apr_array_header_t *requirements_array = ap_requires(r);
 	if (requirements_array) {
 		require_line *requirements = (require_line *) requirements_array->elts;
@@ -623,6 +626,7 @@ static char *getCASAllow(request_rec *r) {
 			}
 		}
 	}
+#endif
 	{
 		ap_configfile_t *f;
 		/* Check in the password file for users */
