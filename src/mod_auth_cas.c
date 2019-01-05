@@ -1658,8 +1658,9 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 	if(response == NULL)
 		return FALSE;
 
-	/* skip the \r\n\r\n after the HTTP headers */
-	response += 4;
+	if(c->CASDebug) {
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "MOD_AUTH_CAS: response = %s", response);
+	}
 
 	if(c->CASVersion == 1) {
 		do {
@@ -1702,6 +1703,142 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "MOD_AUTH_CAS: error retrieving XML document for CASv2 response: %s", line);
 			return FALSE;
 		}
+		if(c->CASValidateSAML == TRUE) {
+			int success = FALSE;
+			node = doc->root;
+			while(node != NULL && apr_strnatcmp(node->name, "Envelope") != 0) {
+				node = node->next;
+			}
+			if(node != NULL) {
+				node = node->first_child;
+				while(node != NULL && apr_strnatcmp(node->name, "Body") != 0) {
+					node = node->next;
+				}
+				if(node != NULL) {
+					node = node->first_child;
+					while(node != NULL && apr_strnatcmp(node->name, "Response") != 0) {
+						node = node->next;
+					}
+					if(node != NULL) {
+						// Save node so we can search for both Status and Assertion starting with Response->first_child
+						apr_xml_elem *response_node = node = node->first_child;
+						while(node != NULL && apr_strnatcmp(node->name, "Status") != 0) {
+							node = node->next;
+						}
+						if(node != NULL) {
+							node = node->first_child;
+							while(node != NULL && apr_strnatcmp(node->name, "StatusCode") != 0) {
+								node = node->next;
+							}
+							if(node != NULL) {
+								attr = node->attr;
+								while(attr != NULL && apr_strnatcmp(attr->name, "Value") != 0) {
+									attr = attr->next;
+								}
+								if(attr != NULL) {
+									const char *value = strchr(attr->value, ':');
+									value = (value == NULL ? attr->value : value + 1);
+									// TO DO: This is very, very minimal support for SAML1.1 StatusCodes..
+									//  Consult https://www.oasis-open.org/committees/download.php/3406/oasis-sstc-saml-core-1.1.pdf
+									if(apr_strnatcmp(value, "Success") == 0) {
+										success = TRUE;
+									} else if(apr_strnatcmp(value, "Responder") == 0) {
+										ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "MOD_AUTH_CAS: SAML StatusCode 'samlp:Responder' - service not authorized for attribute release during attempted validation.");
+										// We can proceed no further, so bail.
+										return FALSE;
+									} else  {
+										ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "MOD_AUTH_CAS: unsupported SAML StatusCode");
+										// We can proceed no further, so bail.
+										return FALSE;
+									} 
+								}
+							}
+						}
+						if(success) {
+							node = response_node;
+							while(node != NULL && apr_strnatcmp(node->name, "Assertion") != 0) {
+								node = node->next;
+							}
+							if(node != NULL) {
+								cas_attr_builder *builder = cas_attr_builder_new(r->pool, attrs);
+								int found_user = FALSE;
+								node = node->first_child;
+								while(node != NULL) {  // For each child element...
+									if(apr_strnatcmp(node->name, "AttributeStatement") == 0) {
+										apr_xml_elem *as_node = node->first_child;
+										while(as_node != NULL) {  // For each child element...
+											if(!found_user && apr_strnatcmp(as_node->name, "Subject") == 0) {
+												apr_xml_elem *subject_node = as_node->first_child;
+												while(subject_node != NULL && apr_strnatcmp(subject_node->name, "NameIdentifier") != 0) {
+													subject_node = subject_node->next;
+												}
+												if(subject_node != NULL) {
+													found_user = TRUE;
+													apr_xml_to_text(r->pool, subject_node, APR_XML_X2T_INNER, NULL, NULL, (const char **)user, NULL);
+												}
+											} else if(apr_strnatcmp(as_node->name, "Attribute") == 0) {
+												attr = as_node->attr;
+												while(attr != NULL && apr_strnatcmp(attr->name, "AttributeName") != 0) {
+													attr = attr->next;
+												}
+												if(attr != NULL) {
+													const char *attr_name = attr->value;
+													apr_xml_elem *attr_node = as_node->first_child;
+													while(attr_node != NULL) {  // For each child element...
+														if(apr_strnatcmp(attr_node->name, "AttributeValue") == 0) {
+															const char *attr_value = NULL;
+															apr_xml_to_text(r->pool, attr_node, APR_XML_X2T_INNER, NULL, NULL, &attr_value, NULL);
+															cas_attr_builder_add(builder, attr_name, attr_value);
+															if (apr_strnatcmp(attr_name, "authtype") == 0) *authtype = apr_pstrndup(r->pool, attr_value, strlen(attr_value));
+															if (apr_strnatcmp(attr_name, "maillist") == 0) *maillist = apr_pstrndup(r->pool, attr_value, strlen(attr_value));
+															if (apr_strnatcmp(attr_name, "password") == 0) *password = apr_pstrndup(r->pool, attr_value, strlen(attr_value));
+														}
+														attr_node = attr_node->next;
+													}
+												}
+											}
+											as_node = as_node->next;
+										}
+									} else if(apr_strnatcmp(node->name, "AuthenticationStatement") == 0) {
+										// Get the AuthenticationMethod
+										apr_xml_elem *as_node = node->first_child;
+										attr = node->attr;
+										while(attr != NULL && apr_strnatcmp(attr->name, "AuthenticationMethod") != 0) {
+											attr = attr->next;
+										}
+										if(attr != NULL) {
+											cas_attr_builder_add(builder, attr->name, attr->value);
+										}
+										// Get the username
+										while(as_node != NULL) {
+											if(!found_user && apr_strnatcmp(as_node->name, "Subject") == 0) {
+												apr_xml_elem *subject_node = as_node->first_child;
+												while(subject_node != NULL && apr_strnatcmp(subject_node->name, "NameIdentifier") != 0) {
+													subject_node = subject_node->next;
+												}
+												if(subject_node != NULL) {
+													found_user = TRUE;
+													apr_xml_to_text(r->pool, subject_node, APR_XML_X2T_INNER, NULL, NULL, (const char **)user, NULL);
+												}
+											}
+											as_node = as_node->next;
+										}
+									}
+									node = node->next;
+								}
+								if (!found_user) {
+									// If we have not found a user at this point, returning false is the only sensible thing to do here
+									return FALSE;
+								}
+							}
+						}
+					}
+				}
+			}
+			if(success) {
+				return TRUE;
+			}
+		} else {
 		/* XML tree:
 		 * ServiceResponse
 		 *  ->authenticationSuccess
@@ -1780,6 +1917,7 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "MOD_AUTH_CAS: %s", (attr == NULL ? "Unknown Error" : attr->value));
 
 			return FALSE;
+		}
 		}
 	}
 	return FALSE;
