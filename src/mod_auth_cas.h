@@ -205,20 +205,16 @@ static apr_byte_t check_cert_cn(request_rec *r, cas_cfg *c, SSL_CTX *ctx, X509 *
 static void CASCleanupSocket(socket_t s, SSL *ssl, SSL_CTX *ctx);
 static char *getResponseFromServer (request_rec *r, cas_cfg *c, char *ticket);
 
-// TODO:
-// Add a new param, cas_saml_attr **attrs
-static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, char **user, char **authtype, char **maillist, char **password);
+static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, char **user, cas_saml_attr **attrs, char **authtype, char **maillist, char **password);
 
 static apr_byte_t isSSL(request_rec *r);
 static apr_byte_t readCASCacheFile(request_rec *r, cas_cfg *c, char *name, cas_cache_entry *cache);
 static void CASCleanCache(request_rec *r, cas_cfg *c);
-static apr_byte_t isValidCASCookie(request_rec *r, cas_cfg *c, char *cookie, char **user, char **authtype, char **maillist, char **password);
+static apr_byte_t isValidCASCookie(request_rec *r, cas_cfg *c, char *cookie, char **user, cas_saml_attr **attrs, char **authtype, char **maillist, char **password);
 static char *getCASCookie(request_rec *r, char *cookieName);
 static apr_byte_t writeCASCacheEntry(request_rec *r, char *name, cas_cache_entry *cache, apr_byte_t exists);
 
-// TODO:
-// Add a new param, cas_saml_attr *attrs, between *user and *ticket
-static char *createCASCookie(request_rec *r, char *user, char *ticket, char *authtype, char *maillist);
+static char *createCASCookie(request_rec *r, char *user, cas_saml_attr *attrs, char *ticket, char *authtype, char *maillist);
 
 static void expireCASST(request_rec *r, char *ticketname);
 #ifdef BROKEN
@@ -241,6 +237,11 @@ static apr_byte_t removeCASParams(request_rec *r);
 static int cas_authenticate(request_rec *r);
 static int cas_post_config(apr_pool_t *pool, apr_pool_t *p1, apr_pool_t *p2, server_rec *s);
 static void cas_register_hooks(apr_pool_t *p);
+
+/* Access per-request CAS SAML attributes */
+void cas_set_attributes(request_rec *r, cas_saml_attr *const attrs);
+const cas_saml_attr *cas_get_attributes(request_rec *r);
+int cas_match_attribute(const char *const attr_spec, const cas_saml_attr *const attributes, struct request_rec *r);
 
 /* apr forward compatibility */
 #ifndef APR_FOPEN_READ
