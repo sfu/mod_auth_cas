@@ -144,6 +144,8 @@ typedef struct cas_cfg {
 	char *CASCertificatePath;
 	char *CASCookiePath;
 	char *CASCookieDomain;
+	char *CASAttributeDelimiter;
+	char *CASAttributePrefix;
 	apr_uri_t CASLoginURL;
 	apr_uri_t CASValidateURL;
 	apr_uri_t CASProxyValidateURL;
