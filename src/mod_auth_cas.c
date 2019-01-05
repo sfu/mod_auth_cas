@@ -1341,11 +1341,7 @@ static char *createBasicCASCacheName(request_rec *r) {
 	
 }
 
-// TODO:
-// Change it to *createCASCookie(request_rec *r, char *user, cas_saml_attr *attrs, char *ticket, char *authtype, char *maillist)
-// The cookie contains an id of a cache session file 
-// Note that there are cases where no cookie needs to be created, for instance, BASIC authentication.
-static char *createCASCookie(request_rec *r, char *user, char *ticket, char *authtype, char *maillist)
+static char *createCASCookie(request_rec *r, char *user, cas_saml_attr *attrs, char *ticket, char *authtype, char *maillist)
 {
 	char *path, *buf, *rv;
 	apr_file_t *f;
@@ -1371,28 +1367,26 @@ static char *createCASCookie(request_rec *r, char *user, char *ticket, char *aut
 	e.authtype = authtype;
 	e.maillist = maillist;
 	e.password = d->password;
+	e.attrs = attrs;
 	
 	if (r->ap_auth_type!=NULL && 0==apr_strnatcasecmp((const char *) r->ap_auth_type, "basic")) {
 		rv = createBasicCASCacheName(r);
 		writeCASCacheEntry(r, rv, &e, FALSE);
 	} else {
-		do {
-			createSuccess = FALSE;
-			/* this may block since this reads from /dev/random - however, it hasn't been a problem in testing */
-			apr_generate_random_bytes((unsigned char *) buf, c->CASCookieEntropy);
-			rv = (char *) ap_md5_binary(r->pool, (unsigned char *) buf, c->CASCookieEntropy);
-	
-			/* 
-			 * Associate this text with user for lookups later.  By using files instead of 
-			 * shared memory the advantage of NFS shares in a clustered environment or a 
-			 * memory based file systems can be used at the expense of potentially some performance
-			 */
-			createSuccess = writeCASCacheEntry(r, rv, &e, FALSE);
-	
-			if(c->CASDebug)
-				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Cookie '%s' created for user '%s'", rv, user);
-		} while (createSuccess == FALSE);
+		/* this may block since this reads from /dev/random - however, it hasn't been a problem in testing */
+		apr_generate_random_bytes((unsigned char *) buf, c->CASCookieEntropy);
+		rv = (char *) ap_md5_binary(r->pool, (unsigned char *) buf, c->CASCookieEntropy);
 	}
+	/* 
+	 * Associate this text with user for lookups later.  By using files instead of 
+	 * shared memory the advantage of NFS shares in a clustered environment or a 
+	 * memory based file systems can be used at the expense of potentially some performance
+	 */
+	if(writeCASCacheEntry(r, rv, &e, FALSE) == FALSE)
+		return NULL;
+	if(c->CASDebug)
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Cookie '%s' created for user '%s'", rv, user);
+
 	buf = (char *) ap_md5_binary(r->pool, (const unsigned char *) ticket, (int) strlen(ticket));
 	path = apr_psprintf(r->pool, "%s.%s", c->CASCookiePath, buf);
 
@@ -1523,13 +1517,7 @@ static void deleteCASCacheFile(request_rec *r, char *cookieName)
 }
 
 /* functions related to validation of tickets/cache entries */
-// It checks the service ticket.
-// TODO: 
-// Add a new parameter, cas_saml_attr **attrs (See isValidCASTicket in the new standard mod_auth_cas)
-// Add cas_saml_attr.h and cas_saml_attr.c
-// Parse the returned CAS response from p3/serviceValidate to extract the user attributes and pass back a pointer 
-// that points to a new *cas_saml_attr 
-static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, char **user, char **authtype, char **maillist, char **password)
+static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, char **user, cas_saml_attr **attrs, char **authtype, char **maillist, char **password)
 {
 	char *line;
 	apr_xml_doc *doc;
@@ -1676,7 +1664,7 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 	return FALSE;
 }
 
-static apr_byte_t isValidCASCookie(request_rec *r, cas_cfg *c, char *cookie, char **user, char **authtype, char **maillist, char **password)
+static apr_byte_t isValidCASCookie(request_rec *r, cas_cfg *c, char *cookie, char **user, cas_saml_attr **attrs, char **authtype, char **maillist, char **password)
 {
 	char *path;
 	cas_cache_entry cache;
