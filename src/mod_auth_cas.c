@@ -1245,13 +1245,24 @@ static void CASCleanCache(request_rec *r, cas_cfg *c)
 		}
 	}
 
-	apr_file_lock(metaFile, APR_FLOCK_EXCLUSIVE);
+	if(cas_flock(metaFile, LOCK_EX, r)) {
+		if(c->CASDebug) {
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "MOD_AUTH_CAS: Could not obtain exclusive lock on %s", path);
+		}
+		apr_file_close(metaFile);
+		return;
+	}
 	apr_file_seek(metaFile, APR_SET, &begin);
 
 	/* if the file was not created on this method invocation (APR_FOPEN_READ is not used above during creation) see if it is time to clean the cache */
 	if((apr_file_flags_get(metaFile) & APR_FOPEN_READ) != 0) {
 		apr_file_gets(line, sizeof(line), metaFile);
 		if(sscanf(line, "%" APR_TIME_T_FMT, &lastClean) != 1) { /* corrupt file */
+			if(cas_flock(metaFile, LOCK_UN, r)) {
+				if(c->CASDebug) {
+					ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "MOD_AUTH_CAS: Could not release exclusive lock on %s", path);
+				}
+			}
 			apr_file_close(metaFile);
 			apr_file_remove(path, r->pool);
 			if(c->CASDebug)
@@ -1259,6 +1270,13 @@ static void CASCleanCache(request_rec *r, cas_cfg *c)
 			return;
 		}
 		if(lastClean > (apr_time_now()-(c->CASCacheCleanInterval*((apr_time_t) APR_USEC_PER_SEC)))) { /* not enough time has elapsed */
+			/* release the locks and file descriptors that we no longer need */
+			if(cas_flock(metaFile, LOCK_UN, r)) {
+				if(c->CASDebug) {
+					ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "MOD_AUTH_CAS: Could not release exclusive lock on %s", path);
+				}
+			}
+			apr_file_close(metaFile);
 			if(c->CASDebug)
 				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Insufficient time elapsed since last cache clean");
 			return;
@@ -1272,7 +1290,12 @@ static void CASCleanCache(request_rec *r, cas_cfg *c)
 		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Beginning cache clean");
 
 	apr_file_printf(metaFile, "%" APR_TIME_T_FMT "\n", apr_time_now());
-	apr_file_unlock(metaFile);
+	if(cas_flock(metaFile, LOCK_UN, r)) {
+		if(c->CASDebug) {
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "MOD_AUTH_CAS: Could not release exclusive lock on %s", path);
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "MOD_AUTH_CAS: Continuing with cache clean...");
+		}
+	}
 	apr_file_close(metaFile);
 
 	/* read all the files in the directory */
@@ -1294,7 +1317,7 @@ static void CASCleanCache(request_rec *r, cas_cfg *c)
 				continue;
 			}
 			if(readCASCacheFile(r, c, (char *) fi.name, &cache) == TRUE) {
-				if(cache.issued < (apr_time_now()-(c->CASTimeout*((apr_time_t) APR_USEC_PER_SEC))) || cache.lastactive < (apr_time_now()-(c->CASIdleTimeout*((apr_time_t) APR_USEC_PER_SEC)))) {
+				if((c->CASTimeout > 0 && (cache.issued < (apr_time_now()-(c->CASTimeout*((apr_time_t) APR_USEC_PER_SEC))))) || cache.lastactive < (apr_time_now()-(c->CASIdleTimeout*((apr_time_t) APR_USEC_PER_SEC)))) {
 					/* delete this file since it is no longer valid */
 					apr_file_close(cacheFile);
 					deleteCASCacheFile(r, (char *) fi.name);
