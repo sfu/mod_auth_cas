@@ -1342,7 +1342,8 @@ static apr_byte_t writeCASCacheEntry(request_rec *r, char *name, cas_cache_entry
 	char *path;
 	apr_file_t *f;
 	apr_off_t begin = 0;
-	int i;
+	int cnt = 0;
+	apr_status_t i = APR_EGENERAL;
 	apr_byte_t lock = FALSE;
 	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
 
@@ -1357,14 +1358,23 @@ static apr_byte_t writeCASCacheEntry(request_rec *r, char *name, cas_cache_entry
 			return FALSE;
 		}
 	} else {
-		if((i = apr_file_open(&f, path, APR_FOPEN_READ|APR_FOPEN_WRITE, APR_FPROT_UREAD|APR_FPROT_UWRITE, r->pool)) != APR_SUCCESS) {
-			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "MOD_AUTH_CAS: Cookie file '%s' could not be opened: %s", path, apr_strerror(i, name, strlen(name)));
-			return FALSE;
+		for(cnt = 0; ; cnt++) {
+			/* gracefully handle broken file system permissions by trying 3 times to create the file, otherwise failing */
+			if(cnt >= 3) {
+				ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "MOD_AUTH_CAS: Cookie file '%s' could not be opened: %s", path, apr_strerror(i, name, strlen(name)));
+				return FALSE;
+			}
+			if(apr_file_open(&f, path, APR_FOPEN_READ|APR_FOPEN_WRITE, APR_FPROT_UREAD|APR_FPROT_UWRITE, r->pool) == APR_SUCCESS)
+				break;
+			else
+				apr_sleep(1000);
 		}
 
 		/* update the file with a new idle time if a write lock can be obtained */
-		if(apr_file_lock(f, APR_FLOCK_EXCLUSIVE) != APR_SUCCESS) {
-			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "MOD_AUTH_CAS: could not obtain an exclusive lock on %s", path);
+		if(cas_flock(f, LOCK_EX, r)) {
+			if(c->CASDebug) {
+				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "MOD_AUTH_CAS: Could not obtain exclusive lock on %s", name);
+			}
 			apr_file_close(f);
 			return FALSE;
 		} else
@@ -1387,14 +1397,34 @@ static apr_byte_t writeCASCacheEntry(request_rec *r, char *name, cas_cache_entry
 		int length = apr_base64_encode(encoded_line, cache->password, strlen(cache->password));
 		apr_file_printf(f, "<password>%s</password>\n", apr_xml_quote_string(r->pool, encoded_line, TRUE));
 	}
+	if(cache->attrs != NULL) {
+		cas_saml_attr *a = cache->attrs;
+		apr_file_printf(f, "<attributes>\n");
+		while(a != NULL) {
+			cas_saml_attr_val *av = a->values;
+			apr_file_printf(f, "  <attribute name=\"%s\">\n", apr_xml_quote_string(r->pool, a->attr, TRUE));
+			while(av != NULL) {
+				apr_file_printf(f, "	<value>%s</value>\n", apr_xml_quote_string(r->pool, av->value, TRUE));
+				av = av->next;
+			}
+			apr_file_printf(f, "  </attribute>\n");
+			a = a->next;
+		}
+		apr_file_printf(f, "</attributes>\n");
+	}
 	if(cache->renewed != FALSE)
 		apr_file_printf(f, "<renewed />\n");
 	if(cache->secure != FALSE)
 		apr_file_printf(f, "<secure />\n");
 	apr_file_printf(f, "</cacheEntry>\n");
 
-	if(lock != FALSE)
-		apr_file_unlock(f);
+	if(lock != FALSE) {
+		if(cas_flock(f, LOCK_UN, r)) {
+			if(c->CASDebug) {
+				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "MOD_AUTH_CAS: Could not release exclusive lock on %s", name);
+			}
+		}
+	}
 
 	apr_file_close(f);
 
