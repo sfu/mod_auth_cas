@@ -2665,6 +2665,50 @@ static int cas_post_config(apr_pool_t *pool, apr_pool_t *p1, apr_pool_t *p2, ser
 // Similar to cas_check_authorization in the new standard mod_auth_cas for 2.4
 #if MODULE_MAGIC_NUMBER_MAJOR >= 20120211
 
+// require cas-attribute attrname:attrvalue
+authz_status cas_check_authorization(request_rec *r, const char *require_line, const void *parsed_require_line)
+{
+	const cas_cfg *const c = ap_get_module_config(r->server->module_config, &auth_cas_module);
+	const cas_saml_attr *const attrs = cas_get_attributes(r);
+
+	const char *t, *w;
+	unsigned int count_casattr = 0;
+    
+	if(c->CASDebug)
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
+			      "Entering cas_check_authorization.");
+
+	if(!r->user) return AUTHZ_DENIED_NO_USER;
+
+	t = require_line;
+	while ((w = ap_getword_conf(r->pool, &t)) && w[0]) {
+		count_casattr++;
+		if (cas_match_attribute(w, attrs, r) == CAS_ATTR_MATCH) {
+			/* If *any* attribute matches, then
+			 * authorization has succeeded and all
+			 * of the others are ignored. */
+			if(c->CASDebug)
+				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
+					      "Require cas-attribute "
+					      "'%s' matched", w);
+			return AUTHZ_GRANTED;
+		}
+	}
+    
+	if (count_casattr == 0) {
+		if(c->CASDebug)	
+			ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r,
+				      "'Require cas-attribute' missing specification(s) in configuration. Declining.");
+	}
+	return AUTHZ_DENIED;
+}
+
+static const authz_provider authz_cas_provider =
+{
+	&cas_check_authorization,
+	NULL,
+};
+
 // require valid-sfu-user
 authz_status cas_check_authz_valid_sfu_user(request_rec *r, const char *require_line, const void *parsed_require_line)
 {
@@ -3198,11 +3242,9 @@ static void cas_register_hooks(apr_pool_t *p)
   // Copied code from mod_auth_cas 2.4 
   // ap_hook_auth_checker(cas_user_access, NULL, NULL, APR_HOOK_MIDDLE);
 #if MODULE_MAGIC_NUMBER_MAJOR >= 20120211
-	/*
 	ap_register_auth_provider(p, AUTHZ_PROVIDER_GROUP, "cas-attribute",
 		AUTHZ_PROVIDER_VERSION,
 		&authz_cas_provider, AP_AUTH_INTERNAL_PER_CONF);
-	 */
 	ap_register_auth_provider(p, AUTHZ_PROVIDER_GROUP, "valid-sfu-user",
 		AUTHZ_PROVIDER_VERSION,
 		&authz_valid_sfu_user_provider, AP_AUTH_INTERNAL_PER_CONF);
