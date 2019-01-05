@@ -82,6 +82,24 @@
 
 #include "mod_auth_cas.h"
 
+int cas_flock(apr_file_t *fileHandle, int lockOperation, request_rec *r)
+{
+	apr_os_file_t osFileHandle;
+	int flockErr;
+
+	apr_os_file_get(&osFileHandle, fileHandle);
+
+	do {
+		flockErr = flock(osFileHandle, lockOperation);
+	} while(flockErr == -1 && errno == EINTR);
+
+	if(r != NULL && flockErr) {
+		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "MOD_AUTH_CAS: Failed to apply locking operation (%s)", strerror(errno));
+	}
+
+	return flockErr;
+}
+
 /* mod_auth_cas configuration specific functions */
 static void *cas_create_server_config(apr_pool_t *pool, server_rec *svr)
 {
@@ -1022,7 +1040,8 @@ static apr_byte_t readCASCacheFile(request_rec *r, cas_cfg *c, char *name, cas_c
 	apr_xml_doc *doc;
 	apr_xml_elem *e;
 	char errbuf[CAS_MAX_ERROR_SIZE];
-	char *path, *val;
+	char *path;
+	const char *val;
 	int i;
 
 	if(c->CASDebug)
@@ -1034,8 +1053,6 @@ static apr_byte_t readCASCacheFile(request_rec *r, cas_cfg *c, char *name, cas_c
 			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Invalid cache cookie length for '%s', (expecting %d, got %d)", name, APR_MD5_DIGESTSIZE*2, (int) strlen(name));
 		return FALSE;
 	}
-	if(c->CASDebug)
-		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cache cookie length OK");
 
 	for(i = 0; i < APR_MD5_DIGESTSIZE*2; i++) {
 		if((name[i] < 'a' || name[i] > 'f') && (name[i] < '0' || name[i] > '9')) {
@@ -1044,8 +1061,6 @@ static apr_byte_t readCASCacheFile(request_rec *r, cas_cfg *c, char *name, cas_c
 			return FALSE;
 		}
 	}
-	if(c->CASDebug)
-		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cache cookie characters OK");
 
 	/* fix MAS-4 JIRA issue */
 	if(apr_stat(&fi, c->CASCookiePath, APR_FINFO_TYPE, r->pool) == APR_INCOMPLETE) {
@@ -1067,20 +1082,41 @@ static apr_byte_t readCASCacheFile(request_rec *r, cas_cfg *c, char *name, cas_c
 			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Cache entry '%s' could not be opened", name);
 		return FALSE;
 	}
-	if(c->CASDebug)
-		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Found cache entry '%s'", name);
 
-	apr_file_lock(f, APR_FLOCK_SHARED);
+	if(cas_flock(f, LOCK_SH, r)) {
+		if(c->CASDebug) {
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "MOD_AUTH_CAS: Could not obtain shared lock on %s", name);
+		}
+		apr_file_close(f);
+		return FALSE;
+	}
 
 	/* read the various values we store */
 	apr_file_seek(f, APR_SET, &begin);
 
-	if(apr_xml_parse_file(r->pool, &parser, &doc, f, CAS_MAX_XML_SIZE) != APR_SUCCESS) {
-		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "MOD_AUTH_CAS: Error parsing XML content for '%s' (%s)", name, !parser?"Unknown":apr_xml_parser_geterror(parser, errbuf, sizeof(errbuf)));
+	rv = apr_xml_parse_file(r->pool, &parser, &doc, f, CAS_MAX_XML_SIZE);
+	if(rv != APR_SUCCESS) {
+		if(parser == NULL) {
+			/*
+			 * apr_xml_parse_file can fail early enough that the parser value is left uninitialized.
+			 * In this case, we'll use apr_strerror and avoid calling apr_xml_parser_geterror, which
+			 * segfaults with a null parser.
+			 * patch to resolve this provided by Chris Adams of Yale
+			 */
+			apr_strerror(rv, errbuf, sizeof(errbuf));
+		} else {
+			apr_xml_parser_geterror(parser, errbuf, sizeof(errbuf));
+		}
+
+		ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "MOD_AUTH_CAS: Error parsing XML content (%s)", errbuf);
+		if(cas_flock(f, LOCK_UN, r)) {
+			if(c->CASDebug) {
+				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "MOD_AUTH_CAS: Could not release shared lock on %s", name);
+			}
+		}
+		apr_file_close(f);
 		return FALSE;
 	}
-	if(c->CASDebug)
-		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Pared XML content for '%s'", name);	
 
 	e = doc->root->first_child;
 	/* XML structure: 
@@ -1101,25 +1137,37 @@ static apr_byte_t readCASCacheFile(request_rec *r, cas_cfg *c, char *name, cas_c
 	cache->authtype = NULL;
 	cache->maillist = NULL;
 	cache->password = NULL;
+	cache->attrs = NULL;
 
 	do {
 		if(e == NULL)
 			continue;
 
-		/* first_cdata.first is NULL on empty attributes (<attr />) */
-		if(e->first_cdata.first != NULL)
-			val = (char *)  e->first_cdata.first->text;
-		else
-			val = NULL; 
+		/* determine textual content of this element */
+		apr_xml_to_text(r->pool, e, APR_XML_X2T_INNER, NULL, NULL, &val, NULL);
 
 		if (apr_strnatcasecmp(e->name, "user") == 0)
 			cache->user = apr_pstrndup(r->pool, val, strlen(val));
 		else if (apr_strnatcasecmp(e->name, "issued") == 0) {
-			if(sscanf(val, "%" APR_TIME_T_FMT, &(cache->issued)) != 1)
+			if(sscanf(val, "%" APR_TIME_T_FMT, &(cache->issued)) != 1) {
+				if(cas_flock(f, LOCK_UN, r)) {
+					if(c->CASDebug) {
+						ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "MOD_AUTH_CAS: Could not release shared lock on %s", name);
+					}
+				}
+				apr_file_close(f);
 				return FALSE;
+			}
 		} else if (apr_strnatcasecmp(e->name, "lastactive") == 0) {
-			if(sscanf(val, "%" APR_TIME_T_FMT, &(cache->lastactive)) != 1)
+			if(sscanf(val, "%" APR_TIME_T_FMT, &(cache->lastactive)) != 1) {
+				if(cas_flock(f, LOCK_UN, r)) {
+					if(c->CASDebug) {
+						ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "MOD_AUTH_CAS: Could not release shared lock on %s", name);
+					}
+				}
+				apr_file_close(f);
 				return FALSE;
+			}
 		} else if (apr_strnatcasecmp(e->name, "path") == 0)
 			cache->path = apr_pstrndup(r->pool, val, strlen(val));
 		else if (apr_strnatcasecmp(e->name, "renewed") == 0)
@@ -1140,12 +1188,32 @@ static apr_byte_t readCASCacheFile(request_rec *r, cas_cfg *c, char *name, cas_c
 			
 			cache->password = apr_pstrndup(r->pool, decoded_line, length);
 		}
+		else if (apr_strnatcasecmp(e->name, "attributes") == 0) {
+			cas_attr_builder *builder = cas_attr_builder_new(r->pool, &(cache->attrs));
+			apr_xml_elem *attrs;
+			apr_xml_elem *v;
+			const char *attr_value;
+			const char *attr_name;
+
+			for (attrs = e->first_child; attrs != NULL; attrs = attrs->next) {
+				attr_name = attrs->attr->value;
+				for (v = attrs->first_child; v != NULL; v = v->next) {
+					apr_xml_to_text(r->pool, v, APR_XML_X2T_INNER,
+							NULL, NULL, &attr_value, NULL);
+					cas_attr_builder_add(builder, attr_name, attr_value);
+				}
+			}
+		}
 		else
 			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "MOD_AUTH_CAS: Unknown cookie attribute '%s'", e->name);
 		e = e->next;
 	} while (e != NULL);
 
-	apr_file_unlock(f);
+	if(cas_flock(f, LOCK_UN, r)) {
+		if(c->CASDebug) {
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "MOD_AUTH_CAS: Could not release shared lock on %s", name);
+		}
+	}
 	apr_file_close(f);
 	return TRUE;
 }
