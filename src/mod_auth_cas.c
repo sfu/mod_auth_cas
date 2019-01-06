@@ -2666,7 +2666,7 @@ RETRYBASIC:
 	/* now, handle when a ticket is present (this will also catch gateway users since ticket != NULL on their trip back) */
 	d->haveTicket = 0;
 	if(ticket != NULL) {
-		if(isValidCASTicket(r, c, ticket, &remoteUser, &SFUauthtype, &SFUmaillist, &d->password)) {
+		if(isValidCASTicket(r, c, ticket, &remoteUser, &attrs, &SFUauthtype, &SFUmaillist, &d->password)) {
 			// This is just a flag that causes a redirect to CAS to force a login.
 			d->haveTicket = 1;
 			if(c->CASDebug)
