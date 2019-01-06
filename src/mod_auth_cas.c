@@ -2671,7 +2671,7 @@ RETRYBASIC:
 			d->haveTicket = 1;
 			if(c->CASDebug)
 				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Values from isValidCASTicket remoteUser=%s SFUauthtype=%s SFUMaillist=%s password=%s", remoteUser, SFUauthtype, SFUmaillist, d->password);
-			cookieString = createCASCookie(r, remoteUser, ticket, SFUauthtype, SFUmaillist);
+			cookieString = createCASCookie(r, remoteUser, attrs, ticket, SFUauthtype, SFUmaillist);
 			setCASCookie(r, (ssl ? d->CASSecureCookie : d->CASCookie), cookieString, ssl);
 			r->user = remoteUser;
 			if(d->CASAuthNHeader != NULL)
