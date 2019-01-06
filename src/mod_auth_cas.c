@@ -56,6 +56,9 @@
 #include <netdb.h>
 #endif
 
+#include <error.h>
+#include <string.h>
+#include <sys/file.h>
 #include <sys/types.h>
 
 #include <openssl/crypto.h>
