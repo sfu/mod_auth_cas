@@ -2875,26 +2875,20 @@ static const authz_provider authz_valid_sfu_user_provider =
 // require sfu-user [uid1] [uid2] [!mail-list1] [!mail-list2]
 authz_status cas_check_authz_sfu_user(request_rec *r, const char *require_line, const void *parsed_require_line)
 {
-	// cas_cfg is the global configuration of this module, i.e., mod_auth_cas
 	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
-	
-	// Each parsed .htaccess will be stored in *d 
 	cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
+	const cas_saml_attr *const attrs = cas_get_attributes(r);
 
 	const char *t, *w;
 
 	t = require_line;
 	if (c->CASDebug) 
-	{
 		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "*****The current require line: %s", require_line); 
-	}
 	
-	// Use w[0] to check if w is a NULL string
-	// Parse the require line to look at each word
 	while ((w = ap_getword_conf(r->pool, &t)) && w[0])
 	{
 		if (w[0] == '!') {
-			if (d->maillist!=NULL && !strcasecmp(w+1, d->maillist)) return AUTHZ_GRANTED;
+			if (cas_match_attribute(apr_psprintf(r->pool, "%s%s", "member:", w[1]), attrs, r) == CAS_ATTR_MATCH) return AUTHZ_GRANTED;
 		} else {
 			if (!strcasecmp(d->authtype, "sfu") && !strcasecmp(w, r->user)) return AUTHZ_GRANTED;
 		}	
