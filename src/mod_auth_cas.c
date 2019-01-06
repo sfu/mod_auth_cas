@@ -1849,74 +1849,81 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 		 *      ->proxyGrantingTicket
 		 *  ->authenticationFailure (code)
 		 */
-		node = doc->root->first_child;
-		if(apr_strnatcmp(node->name, "authenticationSuccess") == 0) {
-			int gotUser = 0;
-			for (node = node->first_child; node != NULL; node=node->next) {
-				line = (char *) (node->first_cdata.first->text);
-				if (apr_strnatcmp(node->name, "user") == 0) {
-					*user = apr_pstrndup(r->pool, line, strlen(line));
-					gotUser = 1;
-					continue;
-				} else if (apr_strnatcmp(node->name, "authtype") == 0) {
-					*authtype = apr_pstrndup(r->pool, line, strlen(line));
-					continue;
-				} else if (apr_strnatcmp(node->name, "maillist") == 0) {
-					*maillist = apr_pstrndup(r->pool, line, strlen(line));
-					continue;
-				} else if (apr_strnatcmp(node->name, "password") == 0) {
-					apr_text *t = node->first_cdata.first;
-					*password = apr_pstrndup(r->pool, line, strlen(line));
-					while ((t = t->next)) {
-						*password = apr_pstrcat(r->pool, *password, t->text, NULL);
-					}
-					continue;
-				}
-			}
-			
-			// Check username and password against that in .htpasswd
-			if ((authtype != NULL) && (*authtype != NULL) && !strcasecmp(*authtype,"apache")) {
-				cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
-				ap_configfile_t *f;
-				char l[CAS_MAX_RESPONSE_SIZE+1];
-			
-				// Check that username and password are not null. Return false if null.
-				if (!gotUser) return FALSE;
-				if (*password==NULL) return FALSE;
-				
-				if(c->CASDebug)
-					ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "isValidCASTicket: Trying to open htpasswd file '%s'", d->pwfile==NULL?"(NULL)":d->pwfile);
-				if (APR_SUCCESS == ap_pcfg_openfile(&f, r->pool, d->pwfile)) {
-					if (c->CASDebug)
-						ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "isValidCASTicket: Successfully opened '%s'", d->pwfile);
-			
-					while (!(ap_cfg_getline(l, CAS_MAX_RESPONSE_SIZE, f))) {
-						if ((l[0] == '#') || (l[0] == 0)) continue; // ignore comment or blank lines
-						if (l[0] == '+') continue; // an SFU line
-						if (!strncmp(l, *user, strlen(*user)) && l[strlen(*user)]==':') {
-							if (APR_SUCCESS == apr_password_validate(*password, l+strlen(*user)+1)) {
-								if (c->CASDebug)
-									ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "isValidCASTicket: Successfully validated password for '%s'", *user);
-								return TRUE;
+		node = doc->root;
+		while(node != NULL && apr_strnatcmp(node->name, "serviceResponse") != 0) {
+			node = node->next;
+		}
+		if(node != NULL) {
+			node = node->first_child;
+			while(node != NULL) {  // For each child element...
+				if(apr_strnatcmp(node->name, "authenticationSuccess") == 0) {
+					node = node->first_child;
+					while(node != NULL ) {
+						if (apr_strnatcmp(node->name, "user") == 0) {
+							apr_xml_to_text(r->pool, node, APR_XML_X2T_INNER, NULL, NULL, (const char **)user, NULL);
+						} else if (apr_strnatcmp(node->name, "authtype") == 0) {
+							apr_xml_to_text(r->pool, node, APR_XML_X2T_INNER, NULL, NULL, (const char **)authtype, NULL);
+						} else if (apr_strnatcmp(node->name, "maillist") == 0) {
+							apr_xml_to_text(r->pool, node, APR_XML_X2T_INNER, NULL, NULL, (const char **)maillist, NULL);
+						} else if (apr_strnatcmp(node->name, "password") == 0) {
+							apr_xml_to_text(r->pool, node, APR_XML_X2T_INNER, NULL, NULL, (const char **)password, NULL);
+						}else if (apr_strnatcmp(node->name, "attributes") == 0){
+							cas_attr_builder *builder = cas_attr_builder_new(r->pool, attrs);
+							apr_xml_elem *node_attr = node->first_child;
+							while (node_attr != NULL){
+								const char *attr_value = NULL;
+								apr_xml_to_text(r->pool, node_attr, APR_XML_X2T_INNER, NULL, NULL, &attr_value, NULL);
+								cas_attr_builder_add(builder, node_attr->name, attr_value);
+								if (apr_strnatcmp(node_attr->name, "authtype") == 0) *authtype = apr_pstrndup(r->pool, attr_value, strlen(attr_value));
+								if (apr_strnatcmp(node_attr->name, "maillist") == 0) *maillist = apr_pstrndup(r->pool, attr_value, strlen(attr_value));
+								if (apr_strnatcmp(node_attr->name, "password") == 0) *password = apr_pstrndup(r->pool, attr_value, strlen(attr_value));
+								ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "MOD_AUTH_CAS: attribute %s %s", node_attr->name, attr_value);
+								node_attr = node_attr->next;
 							}
 						}
+						node = node->next;
 					}
-				} else {
-					if (c->CASDebug)
-						ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "isValidCASTicket: Unable to opened '%s'", d->pwfile);
+					if(user != NULL) {
+						// Check username and password against that in .htpasswd
+						if ((authtype == NULL) && !strcasecmp(*authtype,"apache")) {
+							cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
+							ap_configfile_t *f;
+							char l[CAS_MAX_RESPONSE_SIZE+1];
+							// Check that password is not null. Return false if null.
+							if (password==NULL) return FALSE;
+							if(c->CASDebug)
+								ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "isValidCASTicket: Trying to open htpasswd file '%s'", d->pwfile==NULL?"(NULL)":d->pwfile);
+							if (APR_SUCCESS == ap_pcfg_openfile(&f, r->pool, d->pwfile)) {
+								if (c->CASDebug)
+									ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "isValidCASTicket: Successfully opened '%s'", d->pwfile);
+								while (!(ap_cfg_getline(l, CAS_MAX_RESPONSE_SIZE, f))) {
+									if ((l[0] == '#') || (l[0] == 0)) continue; // ignore comment or blank lines
+									if (l[0] == '+') continue; // an SFU line
+									if (!strncmp(l, *user, strlen(*user)) && l[strlen(*user)]==':') {
+										if (APR_SUCCESS == apr_password_validate(*password, l+strlen(*user)+1)) {
+											if (c->CASDebug)
+												ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "isValidCASTicket: Successfully validated password for '%s'", *user);
+											return TRUE;
+										}
+									}
+								}
+							} else {
+								if (c->CASDebug)
+									ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "isValidCASTicket: Unable to opened '%s'", d->pwfile);
+							}
+							return FALSE;
+						}
+						return TRUE;
+					}
+				} else if (apr_strnatcmp(node->name, "authenticationFailure") == 0) {
+					attr = node->attr;
+					while(attr != NULL && apr_strnatcmp(attr->name, "code") != 0)
+						attr = attr->next;
+					ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "MOD_AUTH_CAS: %s", (attr == NULL ? "Unknown Error" : attr->value));
+					return FALSE;
 				}
-				return FALSE;
+				node = node->next;
 			}
-			
-			if (gotUser) return TRUE;
-		} else if (apr_strnatcmp(node->name, "authenticationFailure") == 0) {
-			attr = node->attr;
-			while(attr != NULL && apr_strnatcmp(attr->name, "code") != 0)
-				attr = attr->next;
-
-			ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "MOD_AUTH_CAS: %s", (attr == NULL ? "Unknown Error" : attr->value));
-
-			return FALSE;
 		}
 		}
 	}
