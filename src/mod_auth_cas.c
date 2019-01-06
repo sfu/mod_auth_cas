@@ -117,6 +117,7 @@ static void *cas_create_server_config(apr_pool_t *pool, server_rec *svr)
 	c->CASCacheCleanInterval = CAS_DEFAULT_CACHE_CLEAN_INTERVAL;
 	c->CASCookieDomain = CAS_DEFAULT_COOKIE_DOMAIN;
 	c->CASCookieHttpOnly = CAS_DEFAULT_COOKIE_HTTPONLY;
+	c->CASValidateSAML = CAS_DEFAULT_VALIDATE_SAML;
 
 	cas_setURL(pool, &(c->CASLoginURL), CAS_DEFAULT_LOGIN_URL);
 	cas_setURL(pool, &(c->CASValidateURL), CAS_DEFAULT_VALIDATE_URL);
@@ -148,6 +149,7 @@ static void *cas_merge_server_config(apr_pool_t *pool, void *BASE, void *ADD)
 	c->CASCacheCleanInterval = (add->CASCacheCleanInterval != CAS_DEFAULT_CACHE_CLEAN_INTERVAL ? add->CASCacheCleanInterval : base->CASCacheCleanInterval);
 	c->CASCookieDomain = (add->CASCookieDomain != CAS_DEFAULT_COOKIE_DOMAIN ? add->CASCookieDomain : base->CASCookieDomain);
 	c->CASCookieHttpOnly = (add->CASCookieHttpOnly != CAS_DEFAULT_COOKIE_HTTPONLY ? add->CASCookieHttpOnly : base->CASCookieHttpOnly);
+	c->CASValidateSAML = (add->CASValidateSAML != CAS_DEFAULT_VALIDATE_SAML ? add->CASValidateSAML : base->CASValidateSAML);
 
 	/* if add->CASLoginURL == NULL, we want to copy base -- otherwise, copy the one from add, and so on and so forth */
 	if(memcmp(&add->CASLoginURL, &test, sizeof(apr_uri_t)) == 0)
@@ -264,6 +266,14 @@ static const char *cfg_readCASParameter(cmd_parms *cmd, void *cfg, const char *v
 				c->CASDebug = FALSE;
 			else
 				return(apr_psprintf(cmd->pool, "MOD_AUTH_CAS: Invalid argument to CASDebug - must be 'On' or 'Off'"));
+		break;
+		case cmd_validate_saml:
+			if(apr_strnatcasecmp(value, "On") == 0)
+				c->CASValidateSAML = TRUE;
+			else if(apr_strnatcasecmp(value, "Off") == 0)
+				c->CASValidateSAML = FALSE;
+			else
+				return(apr_psprintf(cmd->pool, "MOD_AUTH_CAS: Invalid argument to CASValidateSAML - must be 'On' or 'Off'"));
 		break;
 		case cmd_validate_server:
 			/* if atoi() is used on value here with AP_INIT_FLAG, it works but results in a compile warning, so we use TAKE1 to avoid it */
@@ -3474,6 +3484,7 @@ static const command_rec cas_cmds [] = {
 	AP_INIT_TAKE1("CASValidateURL", cfg_readCASParameter, (void *) cmd_validateurl, RSRC_CONF, "Define the CAS Ticket Validation URL (ex: https://login.example.com/cas/serviceValidate)"),
 	AP_INIT_TAKE1("CASProxyValidateURL", cfg_readCASParameter, (void *) cmd_proxyurl, RSRC_CONF, "Define the CAS Proxy Ticket validation URL relative to CASServer (unimplemented)"),
 	AP_INIT_TAKE1("CASTicketsURL", cfg_readCASParameter, (void *) cmd_ticketsurl, RSRC_CONF, "Define the CAS REST Tickets URL (ex: https://login.example.com/cas/tickets)"),
+	AP_INIT_TAKE1("CASValidateSAML", cfg_readCASParameter, (void *) cmd_validate_saml, RSRC_CONF, "Whether the CASLoginURL is for SAML validation (On or Off)"),
 
 	/* cache options */
 	AP_INIT_TAKE1("CASCookiePath", cfg_readCASParameter, (void *) cmd_cookie_path, RSRC_CONF, "Path to store the CAS session cookies in (must end in trailing /)"),
