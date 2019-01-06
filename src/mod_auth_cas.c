@@ -1049,6 +1049,7 @@ static apr_byte_t readCASCacheFile(request_rec *r, cas_cfg *c, char *name, cas_c
 	apr_xml_parser *parser;
 	apr_xml_doc *doc;
 	apr_xml_elem *e;
+	apr_status_t rv;
 	char errbuf[CAS_MAX_ERROR_SIZE];
 	char *path;
 	const char *val;
