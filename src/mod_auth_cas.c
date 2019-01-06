@@ -2479,6 +2479,7 @@ static int cas_authenticate(request_rec *r)
 	char *cookieString = NULL;
 	char *ticket = NULL;
 	char *remoteUser = NULL;
+	cas_saml_attr *attrs = NULL;
 	char *SFUauthtype = NULL;
 	char *SFUmaillist = NULL;
 	char *sent_user, *sent_pw;
@@ -2591,10 +2592,11 @@ RETRYBASIC:
 			/*
 			 * Check to see if we have a cache entry for this user
 			 */
-			if(isValidCASCookie(r, c, createBasicCASCacheName(r), &remoteUser, &SFUauthtype, &SFUmaillist, &d->password)) {
+			if(isValidCASCookie(r, c, createBasicCASCacheName(r), &remoteUser, &attrs, &SFUauthtype, &SFUmaillist, &d->password)) {
 				d->authtype = SFUauthtype;
 				d->maillist = SFUmaillist;
 				r->user = remoteUser;
+				cas_set_attributes(r, attrs);
 				if(d->CASAuthNHeader != NULL)
 					apr_table_set(r->headers_in, d->CASAuthNHeader, remoteUser);
 					// Setup environment variables for SFU items
@@ -2636,7 +2638,7 @@ RETRYBASIC:
 		ticket = getCASTicket(r);
 		cookieString = getCASCookie(r, (ssl ? d->CASSecureCookie : d->CASCookie));
 		if (cookieString!=NULL)
-			if(!isValidCASCookie(r, c, cookieString, &remoteUser, &SFUauthtype, &SFUmaillist, &d->password)) 
+			if(!isValidCASCookie(r, c, cookieString, &remoteUser, &attrs, &SFUauthtype, &SFUmaillist, &d->password)) 
 				cookieString = NULL;
 	}
 	
@@ -2740,11 +2742,12 @@ RETRYBASIC:
 		redirectRequest(r, c);
 		return HTTP_MOVED_TEMPORARILY;
 	} else {
-		if(isValidCASCookie(r, c, cookieString, &remoteUser, &SFUauthtype, &SFUmaillist, &d->password)) {
+		if(isValidCASCookie(r, c, cookieString, &remoteUser, &attrs, &SFUauthtype, &SFUmaillist, &d->password)) {
 			if(c->CASDebug)
 				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Values from isValidCASCookie remoteUser=%s SFUauthtype=%s SFUMaillist=%s password=%s", remoteUser, SFUauthtype, SFUmaillist, d->password);
 			d->authtype = SFUauthtype;
 			d->maillist = SFUmaillist;
+			cas_set_attributes(r, attrs);
 			r->user = remoteUser==NULL?"":remoteUser;
 			if(d->CASAuthNHeader != NULL)
 				apr_table_set(r->headers_in, d->CASAuthNHeader, r->user);
@@ -2888,7 +2891,7 @@ authz_status cas_check_authz_sfu_user(request_rec *r, const char *require_line, 
 	while ((w = ap_getword_conf(r->pool, &t)) && w[0])
 	{
 		if (w[0] == '!') {
-			if (cas_match_attribute(apr_psprintf(r->pool, "%s%s", "member:", w[1]), attrs, r) == CAS_ATTR_MATCH) return AUTHZ_GRANTED;
+			if (cas_match_attribute(apr_psprintf(r->pool, "%s%s", "member:", w+1), attrs, r) == CAS_ATTR_MATCH) return AUTHZ_GRANTED;
 		} else {
 			if (!strcasecmp(d->authtype, "sfu") && !strcasecmp(w, r->user)) return AUTHZ_GRANTED;
 		}	
