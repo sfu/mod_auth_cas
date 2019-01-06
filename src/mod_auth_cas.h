@@ -144,6 +144,7 @@ typedef struct cas_cfg {
 	unsigned int CASTimeout;
 	unsigned int CASIdleTimeout;
 	unsigned int CASCookieHttpOnly;
+	unsigned int CASValidateSAML;
 	char *CASCertificatePath;
 	char *CASCookiePath;
 	char *CASCookieDomain;
