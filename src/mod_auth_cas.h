@@ -199,7 +199,7 @@ typedef enum {
 	cmd_version, cmd_debug, cmd_validate_server, cmd_validate_depth, cmd_wildcard_cert, 
 	cmd_ca_path, cmd_cookie_path, cmd_loginurl, cmd_validateurl, cmd_proxyurl, cmd_ticketsurl, cmd_cookie_entropy, 
 	cmd_session_timeout, cmd_idle_timeout, cmd_cache_interval, cmd_cookie_domain, cmd_cookie_httponly, 
-	cmd_root_proxied_as, cmd_CAS_authtype 
+	cmd_validate_saml, cmd_root_proxied_as, cmd_CAS_authtype 
 } valid_cmds;
 
 module AP_MODULE_DECLARE_DATA auth_cas_module;
