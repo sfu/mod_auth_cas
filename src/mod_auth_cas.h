@@ -126,9 +126,12 @@ typedef int socket_t;
 #define CAS_DEFAULT_AUTHTYPE_HEADER "CAS-Authtype"
 #define CAS_DEFAULT_MAILLIST_HEADER "CAS-Maillist"
 
-#define CAS_MAX_RESPONSE_SIZE 4096
+#define CAS_MAX_RESPONSE_SIZE 65536
 #define CAS_MAX_ERROR_SIZE 1024
 #define CAS_MAX_XML_SIZE 1024
+
+#define CAS_ATTR_MATCH 0
+#define CAS_ATTR_NO_MATCH 1
 
 typedef struct cas_cfg {
 	unsigned int CASVersion;
