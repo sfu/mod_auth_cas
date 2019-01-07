@@ -560,13 +560,15 @@ static char *getCASAllow(request_rec *r) {
 
 	// The following is used to put together the allow string 
 	int allowSFU=0;       // standard SFU accounts
-	int allowAlumni=0;    // alumni accounts
 	int allowApache=0;    // accounts from a .htpasswd file
+#if MODULE_MAGIC_NUMBER_MAJOR >= 20120211
+	int allowAlumni=0;    // alumni accounts
 	int allowStaff=0;     // a staff SFU account
 	int allowStudent=0;   // a student SFU account
 	int allowFaculty=0;   // a faculty SFU account
 	int allowSponsored=0; // a sponsored SFU account
 	int allowExternal=0;  // an external SFU account
+#endif
 	char *allowString = "";
 
 	/* Look at the type of users that are allowed into this page so that we can let CAS know */
