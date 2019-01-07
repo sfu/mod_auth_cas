@@ -196,7 +196,6 @@ static void *cas_create_dir_config(apr_pool_t *pool, char *path)
 	/* SFU specific stuff */
 	c->authtype = CAS_DEFAULT_AUTHTYPE;
 	c->maillist = CAS_DEFAULT_MAILLIST;
-	c->password = CAS_DEFAULT_PASSWORD;
 	c->pwfile = CAS_DEFAULT_PWFILE;
 	c->gpfile = CAS_DEFAULT_GPFILE;
 	c->authoritative = CAS_DEFAULT_AUTHORITATIVE;
@@ -234,7 +233,6 @@ static void *cas_merge_dir_config(apr_pool_t *pool, void *BASE, void *ADD)
 	/* SFU Extensions */
 	c->authtype = add->authtype;
 	c->maillist = add->maillist;
-	c->password = add->password;
 	c->pwfile = (add->pwfile != CAS_DEFAULT_PWFILE ? add->pwfile : base->pwfile);
 	c->gpfile = (add->gpfile != CAS_DEFAULT_GPFILE ? add->gpfile : base->gpfile);
 	c->authoritative = (add->authoritative != CAS_DEFAULT_AUTHORITATIVE ? add->authoritative : base->authoritative);
@@ -1152,7 +1150,6 @@ static apr_byte_t readCASCacheFile(request_rec *r, cas_cfg *c, char *name, cas_c
 	cache->ticket = NULL;
 	cache->authtype = NULL;
 	cache->maillist = NULL;
-	cache->password = NULL;
 	cache->attrs = NULL;
 
 	do {
@@ -1196,14 +1193,6 @@ static apr_byte_t readCASCacheFile(request_rec *r, cas_cfg *c, char *name, cas_c
 			cache->authtype = apr_pstrndup(r->pool, val, strlen(val));
 		else if (apr_strnatcasecmp(e->name, "maillist") == 0)
 			cache->maillist = apr_pstrndup(r->pool, val, strlen(val));
-		else if (apr_strnatcasecmp(e->name, "password") == 0) {
-			char * decoded_line = apr_palloc(r->pool, apr_base64_decode_len(val) + 1);
-			int length = apr_base64_decode(decoded_line, val);
-			/* Null-terminate the string. */
-			decoded_line[length] = '\0';
-			
-			cache->password = apr_pstrndup(r->pool, decoded_line, length);
-		}
 		else if (apr_strnatcasecmp(e->name, "attributes") == 0) {
 			cas_attr_builder *builder = cas_attr_builder_new(r->pool, &(cache->attrs));
 			apr_xml_elem *attrs;
@@ -1408,11 +1397,6 @@ static apr_byte_t writeCASCacheEntry(request_rec *r, char *name, cas_cache_entry
 	apr_file_printf(f, "<ticket>%s</ticket>\n", apr_xml_quote_string(r->pool, cache->ticket, TRUE));
 	if (cache->authtype!=NULL) apr_file_printf(f, "<authtype>%s</authtype>\n", apr_xml_quote_string(r->pool, cache->authtype, TRUE));
 	if (cache->maillist!=NULL) apr_file_printf(f, "<maillist>%s</maillist>\n", apr_xml_quote_string(r->pool, cache->maillist, TRUE));
-	if (cache->password!=NULL && cache->authtype!=NULL && !strcasecmp(cache->authtype,"apache")) {
-		char * encoded_line = apr_palloc(r->pool, apr_base64_encode_len(strlen(cache->password)));
-		int length = apr_base64_encode(encoded_line, cache->password, strlen(cache->password));
-		apr_file_printf(f, "<password>%s</password>\n", apr_xml_quote_string(r->pool, encoded_line, TRUE));
-	}
 	if(cache->attrs != NULL) {
 		cas_saml_attr *a = cache->attrs;
 		apr_file_printf(f, "<attributes>\n");
@@ -1456,7 +1440,6 @@ static char *createBasicCASCacheName(request_rec *r) {
 	 * not be an ability to use cookies. In this case, we need to use a name for the cache file that
 	 * we can reproduce from information available from the Basic authentication. This includes:
 	 *		user name
-	 *		user password
 	 *		realm
 	 *		ip address
 	 *		path to page
@@ -1465,9 +1448,9 @@ static char *createBasicCASCacheName(request_rec *r) {
 	cas_cfg *c = ap_get_module_config(r->server->module_config, &auth_cas_module);
 
 #if MODULE_MAGIC_NUMBER_MAJOR >= 20120211
-	char *buf = apr_pstrcat(r->pool, r->connection->client_ip, r->user, d->password, r->ap_auth_type, getCASPath(r), NULL);
+	char *buf = apr_pstrcat(r->pool, r->connection->client_ip, r->user, r->ap_auth_type, getCASPath(r), NULL);
 #else
-	char *buf = apr_pstrcat(r->pool, r->connection->remote_ip, r->user, d->password, r->ap_auth_type, getCASPath(r), NULL);
+	char *buf = apr_pstrcat(r->pool, r->connection->remote_ip, r->user, r->ap_auth_type, getCASPath(r), NULL);
 #endif
 	char *cacheName = (char *) ap_md5_binary(r->pool, (unsigned char *) buf, strlen(buf));
 
@@ -1490,7 +1473,7 @@ static char *createCASCookie(request_rec *r, char *user, cas_saml_attr *attrs, c
 	buf = apr_pcalloc(r->pool, c->CASCookieEntropy);
 
 	if(c->CASDebug)
-		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "entering createCASCookie(,%s,%s,%s,%s,%s)",user,ticket,authtype,maillist,d->password);
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "entering createCASCookie(,%s,%s,%s,%s)",user,ticket,authtype,maillist);
 
 	CASCleanCache(r, c);
 
@@ -1503,7 +1486,6 @@ static char *createCASCookie(request_rec *r, char *user, cas_saml_attr *attrs, c
 	e.ticket = ticket;
 	e.authtype = authtype;
 	e.maillist = maillist;
-	e.password = d->password;
 	e.attrs = attrs;
 	
 	if (r->ap_auth_type!=NULL && 0==apr_strnatcasecmp((const char *) r->ap_auth_type, "basic")) {
@@ -1654,9 +1636,10 @@ static void deleteCASCacheFile(request_rec *r, char *cookieName)
 }
 
 /* functions related to validation of tickets/cache entries */
-static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, char **user, cas_saml_attr **attrs, char **authtype, char **maillist, char **password)
+static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, char **user, cas_saml_attr **attrs, char **authtype, char **maillist)
 {
 	char *line;
+	char *password;
 	apr_xml_doc *doc;
 	apr_xml_elem *node;
 	apr_xml_attr *attr;
@@ -1807,7 +1790,7 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 															cas_attr_builder_add(builder, attr_name, attr_value);
 															if (apr_strnatcmp(attr_name, "authtype") == 0) *authtype = apr_pstrndup(r->pool, attr_value, strlen(attr_value));
 															if (apr_strnatcmp(attr_name, "maillist") == 0) *maillist = apr_pstrndup(r->pool, attr_value, strlen(attr_value));
-															if (apr_strnatcmp(attr_name, "password") == 0) *password = apr_pstrndup(r->pool, attr_value, strlen(attr_value));
+															if (apr_strnatcmp(attr_name, "password") == 0) password = apr_pstrndup(r->pool, attr_value, strlen(attr_value));
 														}
 														attr_node = attr_node->next;
 													}
@@ -1882,7 +1865,7 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 						} else if (apr_strnatcmp(node->name, "maillist") == 0) {
 							apr_xml_to_text(r->pool, node, APR_XML_X2T_INNER, NULL, NULL, (const char **)maillist, NULL);
 						} else if (apr_strnatcmp(node->name, "password") == 0) {
-							apr_xml_to_text(r->pool, node, APR_XML_X2T_INNER, NULL, NULL, (const char **)password, NULL);
+							apr_xml_to_text(r->pool, node, APR_XML_X2T_INNER, NULL, NULL, (const char **)&password, NULL);
 						}else if (apr_strnatcmp(node->name, "attributes") == 0){
 							cas_attr_builder *builder = cas_attr_builder_new(r->pool, attrs);
 							apr_xml_elem *node_attr = node->first_child;
@@ -1892,7 +1875,7 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 								cas_attr_builder_add(builder, node_attr->name, attr_value);
 								if (apr_strnatcmp(node_attr->name, "authtype") == 0) *authtype = apr_pstrndup(r->pool, attr_value, strlen(attr_value));
 								if (apr_strnatcmp(node_attr->name, "maillist") == 0) *maillist = apr_pstrndup(r->pool, attr_value, strlen(attr_value));
-								if (apr_strnatcmp(node_attr->name, "password") == 0) *password = apr_pstrndup(r->pool, attr_value, strlen(attr_value));
+								if (apr_strnatcmp(node_attr->name, "password") == 0) password = apr_pstrndup(r->pool, attr_value, strlen(attr_value));
 								ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "MOD_AUTH_CAS: attribute %s %s", node_attr->name, attr_value);
 								node_attr = node_attr->next;
 							}
@@ -1901,7 +1884,7 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 					}
 					if(user != NULL) {
 						// Check username and password against that in .htpasswd
-						if ((authtype == NULL) && !strcasecmp(*authtype,"apache")) {
+						if ((authtype != NULL) && !strcasecmp(*authtype,"apache")) {
 							cas_dir_cfg *d = ap_get_module_config(r->per_dir_config, &auth_cas_module);
 							ap_configfile_t *f;
 							char l[CAS_MAX_RESPONSE_SIZE+1];
@@ -1916,7 +1899,7 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 									if ((l[0] == '#') || (l[0] == 0)) continue; // ignore comment or blank lines
 									if (l[0] == '+') continue; // an SFU line
 									if (!strncmp(l, *user, strlen(*user)) && l[strlen(*user)]==':') {
-										if (APR_SUCCESS == apr_password_validate(*password, l+strlen(*user)+1)) {
+										if (APR_SUCCESS == apr_password_validate(password, l+strlen(*user)+1)) {
 											if (c->CASDebug)
 												ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "isValidCASTicket: Successfully validated password for '%s'", *user);
 											return TRUE;
@@ -1946,7 +1929,7 @@ static apr_byte_t isValidCASTicket(request_rec *r, cas_cfg *c, char *ticket, cha
 	return FALSE;
 }
 
-static apr_byte_t isValidCASCookie(request_rec *r, cas_cfg *c, char *cookie, char **user, cas_saml_attr **attrs, char **authtype, char **maillist, char **password)
+static apr_byte_t isValidCASCookie(request_rec *r, cas_cfg *c, char *cookie, char **user, cas_saml_attr **attrs, char **authtype, char **maillist)
 {
 	char *path;
 	cas_cache_entry cache;
@@ -2008,9 +1991,6 @@ static apr_byte_t isValidCASCookie(request_rec *r, cas_cfg *c, char *cookie, cha
 		*authtype = apr_pstrndup(r->pool, cache.authtype, strlen(cache.authtype));
 	if (cache.maillist!=NULL)
 		*maillist = apr_pstrndup(r->pool, cache.maillist, strlen(cache.maillist));
-	if (cache.password!=NULL)
-		*password = apr_pstrndup(r->pool, cache.password, strlen(cache.password));
-
 
 	cache.lastactive = apr_time_now();
 	if(writeCASCacheEntry(r, cookie, &cache, TRUE) == FALSE && c->CASDebug)
@@ -2597,7 +2577,6 @@ RETRYBASIC:
 
 			/* set the user, even though the user is unauthenticated at this point */
 			r->user = sent_user;
-			d->password = sent_pw;
 		}
 		// If we have a user logged in, try to get a service ticket from CAS, otherwise fall
 		// through without a ticket so the user will be prompted for an id/password
@@ -2608,7 +2587,7 @@ RETRYBASIC:
 			/*
 			 * Check to see if we have a cache entry for this user
 			 */
-			if(isValidCASCookie(r, c, createBasicCASCacheName(r), &remoteUser, &attrs, &SFUauthtype, &SFUmaillist, &d->password)) {
+			if(isValidCASCookie(r, c, createBasicCASCacheName(r), &remoteUser, &attrs, &SFUauthtype, &SFUmaillist)) {
 				d->authtype = SFUauthtype;
 				d->maillist = SFUmaillist;
 				r->user = remoteUser;
@@ -2633,7 +2612,7 @@ RETRYBASIC:
 			/*
 			 * In order to get a ticket in Basic mode, we need to pass the id/password to CAS
 			 */
-			char *TGT = CAS_tickets(r, c, d, NULL);
+			char *TGT = CAS_tickets(r, c, sent_user, NULL);
 			if (TGT==NULL) {
 				note_basic_auth_failure(r);
 				return HTTP_UNAUTHORIZED;
@@ -2654,7 +2633,7 @@ RETRYBASIC:
 		ticket = getCASTicket(r);
 		cookieString = getCASCookie(r, (ssl ? d->CASSecureCookie : d->CASCookie));
 		if (cookieString!=NULL)
-			if(!isValidCASCookie(r, c, cookieString, &remoteUser, &attrs, &SFUauthtype, &SFUmaillist, &d->password)) 
+			if(!isValidCASCookie(r, c, cookieString, &remoteUser, &attrs, &SFUauthtype, &SFUmaillist)) 
 				cookieString = NULL;
 	}
 	
@@ -2682,11 +2661,11 @@ RETRYBASIC:
 	/* now, handle when a ticket is present (this will also catch gateway users since ticket != NULL on their trip back) */
 	d->haveTicket = 0;
 	if(ticket != NULL) {
-		if(isValidCASTicket(r, c, ticket, &remoteUser, &attrs, &SFUauthtype, &SFUmaillist, &d->password)) {
+		if(isValidCASTicket(r, c, ticket, &remoteUser, &attrs, &SFUauthtype, &SFUmaillist)) {
 			// This is just a flag that causes a redirect to CAS to force a login.
 			d->haveTicket = 1;
 			if(c->CASDebug)
-				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Values from isValidCASTicket remoteUser=%s SFUauthtype=%s SFUMaillist=%s password=%s", remoteUser, SFUauthtype, SFUmaillist, d->password);
+				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Values from isValidCASTicket remoteUser=%s SFUauthtype=%s SFUMaillist=%s", remoteUser, SFUauthtype, SFUmaillist);
 			cookieString = createCASCookie(r, remoteUser, attrs, ticket, SFUauthtype, SFUmaillist);
 			setCASCookie(r, (ssl ? d->CASSecureCookie : d->CASCookie), cookieString, ssl);
 			r->user = remoteUser;
@@ -2758,9 +2737,9 @@ RETRYBASIC:
 		redirectRequest(r, c);
 		return HTTP_MOVED_TEMPORARILY;
 	} else {
-		if(isValidCASCookie(r, c, cookieString, &remoteUser, &attrs, &SFUauthtype, &SFUmaillist, &d->password)) {
+		if(isValidCASCookie(r, c, cookieString, &remoteUser, &attrs, &SFUauthtype, &SFUmaillist)) {
 			if(c->CASDebug)
-				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Values from isValidCASCookie remoteUser=%s SFUauthtype=%s SFUMaillist=%s password=%s", remoteUser, SFUauthtype, SFUmaillist, d->password);
+				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Values from isValidCASCookie remoteUser=%s SFUauthtype=%s SFUMaillist=%s", remoteUser, SFUauthtype, SFUmaillist);
 			d->authtype = SFUauthtype;
 			d->maillist = SFUmaillist;
 			cas_set_attributes(r, attrs);
@@ -3148,46 +3127,7 @@ static int cas_user_access(request_rec *r)
 		
 		reqs = (require_line *)reqs_arr->elts;
 		int req_count = reqs_arr->nelts;
-		
-		/* 
-		 *  If the user is an "apache" account, check the password in the htpasswd file
-		 *	We will set req_count to 0 so that the require line check is skipped if
-		 *  the password check fails.
-		 */
-		 // Commented because Ray think this block should be called earlier, i.e., in isValidCASTicket routine
-		 
-// 		if (!strcasecmp(authtype,"apache")) {
-// 			ap_configfile_t *f;
-// 			char l[CAS_MAX_RESPONSE_SIZE+1];
-// 			
-// 			/* We will set the request count to 0 assuming the password check fails. It will be reset if it passes. */
-// 			req_count = 0;
-// 			if (d->password==NULL) d->password="";
-// 			
-// 			if(c->CASDebug)
-// 				ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Trying to open htpasswd file '%s'", d->pwfile==NULL?"(NULL)":d->pwfile);
-// 			if (APR_SUCCESS == ap_pcfg_openfile(&f, r->pool, d->pwfile)) {
-// 				if (c->CASDebug)
-// 					ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Successfully opened '%s'", d->pwfile);
-// 			
-// 				while (!(ap_cfg_getline(l, CAS_MAX_RESPONSE_SIZE, f))) {
-// 					if ((l[0] == '#') || (l[0] == 0)) continue; // ignore comment or blank lines
-// 					if (l[0] == '+') continue; // an SFU line
-// 					if (!strncmp(l, user, strlen(user)) && l[strlen(user)]==':') {
-// 						if (APR_SUCCESS == apr_password_validate(d->password, l+strlen(user)+1)) {
-// 							if (c->CASDebug)
-// 								ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Successfully validated password for '%s'", user);
-// 							req_count=reqs_arr->nelts; 
-// 							break;
-// 						}
-// 					}
-// 				}
-// 			} else {
-// 				if (c->CASDebug)
-// 					ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "cas_user_access: Unable to opened '%s'", d->pwfile);
-// 			}
-// 		}
-		
+				
 		for (x = 0; x < req_count; x++) {
 			
 			if (!(reqs[x].method_mask & (AP_METHOD_BIT << m))) {
