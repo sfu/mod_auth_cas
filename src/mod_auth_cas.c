@@ -561,7 +561,7 @@ static char *getCASAllow(request_rec *r) {
 	// The following is used to put together the allow string 
 	int allowSFU=0;       // standard SFU accounts
 	int allowApache=0;    // accounts from a .htpasswd file
-#if MODULE_MAGIC_NUMBER_MAJOR >= 20120211
+#if MODULE_MAGIC_NUMBER_MAJOR < 20120211
 	int allowAlumni=0;    // alumni accounts
 	int allowStaff=0;     // a staff SFU account
 	int allowStudent=0;   // a student SFU account
