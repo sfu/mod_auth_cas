@@ -168,6 +168,7 @@ typedef struct cas_dir_cfg {
 	/* The following are SFU extensions */
 	char *authtype;
 	char *maillist;
+	char *password; /* save the password provided for Basic authentication */
 	char *pwfile;
 	char *gpfile;
 	int authoritative;
