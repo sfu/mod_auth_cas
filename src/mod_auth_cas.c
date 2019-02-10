@@ -2577,6 +2577,7 @@ RETRYBASIC:
 
 			/* set the user, even though the user is unauthenticated at this point */
 			r->user = sent_user;
+			d->password = sent_pw;
 		}
 		// If we have a user logged in, try to get a service ticket from CAS, otherwise fall
 		// through without a ticket so the user will be prompted for an id/password
@@ -2612,7 +2613,7 @@ RETRYBASIC:
 			/*
 			 * In order to get a ticket in Basic mode, we need to pass the id/password to CAS
 			 */
-			char *TGT = CAS_tickets(r, c, sent_user, NULL);
+			char *TGT = CAS_tickets(r, c, d, NULL);
 			if (TGT==NULL) {
 				note_basic_auth_failure(r);
 				return HTTP_UNAUTHORIZED;
@@ -2722,9 +2723,6 @@ RETRYBASIC:
 			}
 		} else {
 			/* If we get here, we just fall through and get redirected back to CAS */
-			/* sometimes, pages that automatically refresh will re-send the ticket parameter, so let's check any cookies presented or return an error if none */
-			//if(cookieString == NULL)
-			//	return HTTP_UNAUTHORIZED;
 		}
 	}
 	
